@@ -30,15 +30,34 @@ function KpiCard({
   label,
   count,
   color,
+  href,
 }: {
   label: string;
   count: number;
   color: string;
+  href?: string;
 }) {
-  return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-5">
+  const content = (
+    <>
       <p className="text-sm font-medium text-zinc-400">{label}</p>
       <p className={`mt-2 text-3xl font-bold ${color}`}>{count}</p>
+    </>
+  );
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className="rounded-lg border border-zinc-800 bg-zinc-900 p-5 transition hover:bg-zinc-800 hover:border-zinc-700 cursor-pointer"
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-5">
+      {content}
     </div>
   );
 }
@@ -223,26 +242,31 @@ export default function DashboardPage() {
                 label="Total"
                 count={totalIncidents}
                 color="text-white"
+                href="/incidents"
               />
               <KpiCard
                 label="Open"
                 count={stats.statusCounts.open}
                 color="text-red-400"
+                href="/incidents?status=open"
               />
               <KpiCard
                 label="Critical"
                 count={stats.severityCounts.critical}
                 color="text-red-300"
+                href="/incidents?severity=critical"
               />
               <KpiCard
                 label="Investigating"
                 count={stats.statusCounts.investigating}
                 color="text-yellow-300"
+                href="/incidents?status=investigating"
               />
               <KpiCard
                 label="Closed"
                 count={stats.statusCounts.closed}
                 color="text-zinc-400"
+                href="/incidents?status=closed"
               />
             </div>
 
@@ -254,9 +278,10 @@ export default function DashboardPage() {
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {(["low", "medium", "high", "critical"] as const).map(
                   (sev) => (
-                    <div
+                    <Link
                       key={sev}
-                      className={`rounded-lg border px-4 py-3 text-center ${
+                      href={`/incidents?severity=${sev}`}
+                      className={`rounded-lg border px-4 py-3 text-center transition hover:opacity-80 cursor-pointer ${
                         severityColors[sev]
                       }`}
                     >
@@ -264,7 +289,7 @@ export default function DashboardPage() {
                       <p className="mt-1 text-2xl font-bold">
                         {stats.severityCounts[sev]}
                       </p>
-                    </div>
+                    </Link>
                   )
                 )}
               </div>
@@ -272,23 +297,89 @@ export default function DashboardPage() {
 
             {/* Two-column lists */}
             <div className="grid gap-6 lg:grid-cols-2">
-              {/* Critical Open */}
+              {/* Critical Open OR Assigned to Me OR Unassigned */}
               <div>
-                <h2 className="text-lg font-semibold text-white mb-3">
-                  Critical &amp; Open
-                </h2>
-                {stats.criticalOpen.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-zinc-700 py-8 text-center">
-                    <p className="text-zinc-500 text-sm">
-                      No critical open incidents
-                    </p>
-                  </div>
+                {stats.criticalOpen.length > 0 ? (
+                  <>
+                    <h2 className="text-lg font-semibold text-white mb-3">
+                      Critical &amp; Open
+                    </h2>
+                    <div className="space-y-2">
+                      {stats.criticalOpen.map((inc) => (
+                        <IncidentRow key={inc.id} incident={inc} />
+                      ))}
+                    </div>
+                  </>
+                ) : stats.assignedToMe.length > 0 ? (
+                  <>
+                    <h2 className="text-lg font-semibold text-white mb-3">
+                      Assigned to Me
+                    </h2>
+                    <div className="space-y-2">
+                      {stats.assignedToMe.map((inc) => (
+                        <Link
+                          key={inc.id}
+                          href={`/incidents/${inc.id}`}
+                          className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 transition hover:bg-zinc-800"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-white">
+                              {inc.title}
+                            </p>
+                            <p className="mt-0.5 text-xs text-zinc-500">
+                              {inc.due_at ? (
+                                <>
+                                  <span className="font-bold text-yellow-400">
+                                    Due: {new Date(inc.due_at).toLocaleString()}
+                                  </span>
+                                  {" · "}
+                                </>
+                              ) : null}
+                              {new Date(inc.updated_at || inc.created_at).toLocaleString()}
+                            </p>
+                          </div>
+                          <div className="ml-3 flex items-center gap-2">
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
+                                severityColors[inc.severity] || "bg-zinc-800 text-zinc-400"
+                              }`}
+                            >
+                              {inc.severity}
+                            </span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                                statusColors[inc.status] || "bg-zinc-800 text-zinc-400"
+                              }`}
+                            >
+                              {inc.status}
+                            </span>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  </>
+                ) : stats.unassigned.length > 0 ? (
+                  <>
+                    <h2 className="text-lg font-semibold text-white mb-3">
+                      Unassigned Incidents
+                    </h2>
+                    <div className="space-y-2">
+                      {stats.unassigned.map((inc) => (
+                        <IncidentRow key={inc.id} incident={inc} />
+                      ))}
+                    </div>
+                  </>
                 ) : (
-                  <div className="space-y-2">
-                    {stats.criticalOpen.map((inc) => (
-                      <IncidentRow key={inc.id} incident={inc} />
-                    ))}
-                  </div>
+                  <>
+                    <h2 className="text-lg font-semibold text-white mb-3">
+                      Critical &amp; Open
+                    </h2>
+                    <div className="rounded-lg border border-dashed border-zinc-700 py-8 text-center">
+                      <p className="text-zinc-500 text-sm">
+                        No critical open incidents
+                      </p>
+                    </div>
+                  </>
                 )}
               </div>
 

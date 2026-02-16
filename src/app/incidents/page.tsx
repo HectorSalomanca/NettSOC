@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import React, { useEffect, useState, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getSession, signOut } from "@/services/auth";
 import {
@@ -27,8 +27,9 @@ const statusColors: Record<string, string> = {
   closed: "bg-zinc-800 text-zinc-400",
 };
 
-export default function IncidentsPage() {
+function IncidentsPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [activeOrg, setActiveOrg] = useState<Organization | null>(null);
   const [myRole, setMyRole] = useState<string | null>(null);
@@ -37,8 +38,8 @@ export default function IncidentsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [q, setQ] = useState("");
-  const [severity, setSeverity] = useState("all");
-  const [status, setStatus] = useState("all");
+  const [severity, setSeverity] = useState(searchParams.get("severity") || "all");
+  const [status, setStatus] = useState(searchParams.get("status") || "all");
   const [owner, setOwner] = useState<"any" | "me">("any");
   const [sort, setSort] = useState<IncidentFilterParams["sort"]>("created_desc");
 
@@ -75,7 +76,14 @@ export default function IncidentsPage() {
         setActiveOrg(org);
         const role = await getMyRoleInActiveOrg();
         setMyRole(role);
-        await fetchIncidents();
+        
+        // Auto-apply filters from URL params
+        await fetchIncidents({ 
+          severity: severity !== "all" ? severity : undefined,
+          status: status !== "all" ? status : undefined,
+          owner,
+          sort 
+        });
       } catch {
         router.push("/login");
       } finally {
@@ -83,7 +91,7 @@ export default function IncidentsPage() {
       }
     }
     init();
-  }, [router, fetchIncidents]);
+  }, [router, fetchIncidents, severity, status, owner, sort]);
 
   function handleApplyFilters() {
     setError(null);
@@ -352,5 +360,23 @@ export default function IncidentsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function IncidentsPage() {
+  return (
+    <React.Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center bg-zinc-950">
+        <div className="flex items-center gap-3 text-zinc-400">
+          <svg className="h-5 w-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          Loading…
+        </div>
+      </div>
+    }>
+      <IncidentsPageContent />
+    </React.Suspense>
   );
 }

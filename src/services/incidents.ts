@@ -13,6 +13,7 @@ export interface Incident {
   created_by: string;
   org_id: string;
   assigned_to?: string | null;
+  due_at?: string | null;
 }
 
 export async function listIncidents(): Promise<Incident[]> {
@@ -76,7 +77,7 @@ export async function createIncident(incident: {
 
 export async function updateIncident(
   id: string,
-  patch: Partial<Pick<Incident, "summary" | "severity" | "status" | "assigned_to">>
+  patch: Partial<Pick<Incident, "summary" | "severity" | "status" | "assigned_to" | "due_at">>
 ): Promise<Incident> {
   const { data, error } = await supabase
     .from("incidents")
@@ -167,6 +168,8 @@ export interface DashboardStats {
   severityCounts: Record<string, number>;
   criticalOpen: Incident[];
   recentlyUpdated: Incident[];
+  assignedToMe: Incident[];
+  unassigned: Incident[];
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
@@ -216,5 +219,31 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     )
     .slice(0, 5);
 
-  return { statusCounts, severityCounts, criticalOpen, recentlyUpdated };
+  const { data: userData } = await supabase.auth.getUser();
+  const currentUserId = userData?.user?.id;
+
+  const assignedToMe = currentUserId
+    ? incidents
+        .filter((i) => i.assigned_to === currentUserId && i.status !== "closed")
+        .sort((a, b) => {
+          // Sort by due_at first (soonest first), then by created_at
+          if (a.due_at && b.due_at) {
+            return new Date(a.due_at).getTime() - new Date(b.due_at).getTime();
+          }
+          if (a.due_at) return -1;
+          if (b.due_at) return 1;
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        })
+        .slice(0, 5)
+    : [];
+
+  const unassigned = incidents
+    .filter((i) => !i.assigned_to && i.status !== "closed")
+    .sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )
+    .slice(0, 5);
+
+  return { statusCounts, severityCounts, criticalOpen, recentlyUpdated, assignedToMe, unassigned };
 }

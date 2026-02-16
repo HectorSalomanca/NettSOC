@@ -58,14 +58,24 @@ export async function queueNotification(params: {
 export async function notifyIncidentAssignment(
   incidentId: string,
   incidentTitle: string,
-  assignedUserId: string
+  assignedUserId: string,
+  severity?: string,
+  dueAt?: string | null
 ): Promise<void> {
+  let message = `You have been assigned to incident: ${incidentTitle}`;
+  if (severity) {
+    message += ` (Severity: ${severity})`;
+  }
+  if (dueAt) {
+    message += ` - Due: ${new Date(dueAt).toLocaleString()}`;
+  }
+  
   await queueNotification({
     recipientUserId: assignedUserId,
     type: "incident_assign",
     entityType: "incident",
     entityId: incidentId,
-    message: `You have been assigned to incident: ${incidentTitle}`,
+    message,
   });
 }
 

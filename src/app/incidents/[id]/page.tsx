@@ -24,6 +24,7 @@ import {
 import { getProfilesByIds, Profile } from "@/services/profiles";
 import { getMyRoleInActiveOrg, listMembers, MemberRecord } from "@/services/members";
 import { listComments, createComment, deleteComment, Comment } from "@/services/comments";
+import { notifyIncidentAssignment } from "@/services/notifications";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -80,6 +81,7 @@ export default function IncidentDetailPage() {
   const [severity, setSeverity] = useState("");
   const [status, setStatus] = useState("");
   const [assignedTo, setAssignedTo] = useState<string>("");
+  const [dueAt, setDueAt] = useState<string>("");
 
   // Timeline state
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
@@ -169,6 +171,7 @@ export default function IncidentDetailPage() {
         setSeverity(data.severity);
         setStatus(data.status);
         setAssignedTo(data.assigned_to || "");
+        setDueAt(data.due_at ? new Date(data.due_at).toISOString().slice(0, 16) : "");
         const [entries] = await Promise.all([
           listTimeline(id),
           fetchEvidence(),
@@ -210,13 +213,55 @@ export default function IncidentDetailPage() {
     setError(null);
     setSuccessMsg(null);
     try {
+      const oldIncident = incident;
       const updated = await updateIncident(id, { 
         summary, 
         severity, 
         status,
-        assigned_to: assignedTo || null 
+        assigned_to: assignedTo || null,
+        due_at: dueAt ? new Date(dueAt).toISOString() : null
       });
       setIncident(updated);
+
+      // Create system event comments for key changes
+      const systemEvents: string[] = [];
+      
+      if (oldIncident && oldIncident.severity !== severity) {
+        systemEvents.push(`**System:** Severity changed from **${oldIncident.severity}** → **${severity}**`);
+      }
+      if (oldIncident && oldIncident.status !== status) {
+        systemEvents.push(`**System:** Status changed from **${oldIncident.status}** → **${status}**`);
+      }
+      if (oldIncident && oldIncident.assigned_to !== (assignedTo || null)) {
+        const oldName = oldIncident.assigned_to 
+          ? (profileMap[oldIncident.assigned_to]?.display_name || "Unknown")
+          : "Unassigned";
+        const newName = assignedTo 
+          ? (profileMap[assignedTo]?.display_name || "Unknown")
+          : "Unassigned";
+        systemEvents.push(`**System:** Assigned from **${oldName}** → **${newName}**`);
+        
+        // Send email notification to newly assigned user
+        if (assignedTo && assignedTo !== oldIncident.assigned_to) {
+          await notifyIncidentAssignment(
+            id,
+            incident?.title || "Untitled Incident",
+            assignedTo,
+            severity,
+            dueAt ? new Date(dueAt).toISOString() : null
+          );
+        }
+      }
+
+      // Post system events as comments
+      for (const event of systemEvents) {
+        await createComment({ incidentId: id, content: event });
+      }
+
+      if (systemEvents.length > 0) {
+        await fetchComments();
+      }
+
       setSuccessMsg("Incident updated successfully.");
     } catch (err: unknown) {
       setError(
@@ -523,24 +568,99 @@ export default function IncidentDetailPage() {
                 ))}
               </select>
             </div>
+            <div>
+              <label
+                htmlFor="dueAt"
+                className="block text-sm font-medium text-zinc-300"
+              >
+                SLA Due Date
+              </label>
+              <input
+                type="datetime-local"
+                id="dueAt"
+                value={dueAt}
+                onChange={(e) => setDueAt(e.target.value)}
+                disabled={myRole === "viewer"}
+                className="mt-1 block w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
+              />
+              {incident?.due_at && (
+                <p className="mt-1 text-xs text-zinc-400">
+                  {(() => {
+                    const now = new Date();
+                    const due = new Date(incident.due_at);
+                    const diff = due.getTime() - now.getTime();
+                    const hours = Math.floor(Math.abs(diff) / (1000 * 60 * 60));
+                    const days = Math.floor(hours / 24);
+                    
+                    if (diff < 0) {
+                      return (
+                        <span className="text-red-400 font-medium">
+                          ⚠️ Overdue by {days > 0 ? `${days}d ${hours % 24}h` : `${hours}h`}
+                        </span>
+                      );
+                    } else if (diff < 24 * 60 * 60 * 1000) {
+                      return (
+                        <span className="text-yellow-400 font-medium">
+                          ⏰ Due in {hours}h
+                        </span>
+                      );
+                    } else {
+                      return (
+                        <span className="text-zinc-400">
+                          Due in {days}d {hours % 24}h
+                        </span>
+                      );
+                    }
+                  })()}
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Actions */}
           <div className="flex items-center justify-between pt-2">
-            {myRole === "admin" && (
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="rounded-lg border border-red-800 px-4 py-2 text-sm font-medium text-red-400 transition hover:bg-red-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {deleting ? "Deleting…" : "Delete Incident"}
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {myRole === "admin" && (
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="rounded-lg border border-red-800 px-4 py-2 text-sm font-medium text-red-400 transition hover:bg-red-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deleting ? "Deleting…" : "Delete Incident"}
+                </button>
+              )}
+              {myRole && myRole !== "viewer" && incident?.status !== "closed" && (
+                <button
+                  onClick={async () => {
+                    setStatus("closed");
+                    setSaving(true);
+                    try {
+                      const updated = await updateIncident(id, { status: "closed" });
+                      setIncident(updated);
+                      await createComment({ 
+                        incidentId: id, 
+                        content: "**System:** Status changed to **closed** - Incident marked as completed" 
+                      });
+                      await fetchComments();
+                      setSuccessMsg("Incident marked as completed.");
+                    } catch (err: unknown) {
+                      setError(err instanceof Error ? err.message : "Failed to complete incident");
+                    } finally {
+                      setSaving(false);
+                    }
+                  }}
+                  disabled={saving}
+                  className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Mark as Completed
+                </button>
+              )}
+            </div>
             {myRole && myRole !== "viewer" && (
               <button
                 onClick={handleUpdate}
                 disabled={saving}
-                className="rounded-lg bg-indigo-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed ml-auto"
+                className="rounded-lg bg-indigo-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {saving ? "Saving…" : "Save Changes"}
               </button>
@@ -757,6 +877,8 @@ export default function IncidentDetailPage() {
                       {rec.size_bytes
                         ? ` · ${(rec.size_bytes / 1024).toFixed(1)} KB`
                         : ""}
+                      {" · "}
+                      Uploaded by {profileMap[rec.uploaded_by]?.display_name || rec.uploaded_by.slice(0, 8) + "…"}
                       {" · "}
                       {new Date(rec.created_at).toLocaleString()}
                     </p>
