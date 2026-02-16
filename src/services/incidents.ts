@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabaseClient";
 import { getActiveOrg } from "@/services/org";
+import { logAudit } from "@/services/audit";
 
 export interface Incident {
   id: string;
@@ -11,6 +12,7 @@ export interface Incident {
   updated_at: string;
   created_by: string;
   org_id: string;
+  assigned_to?: string | null;
 }
 
 export async function listIncidents(): Promise<Incident[]> {
@@ -41,6 +43,7 @@ export async function createIncident(incident: {
   summary: string;
   severity: string;
   status: string;
+  assigned_to?: string | null;
 }): Promise<Incident> {
   const {
     data: { session },
@@ -60,12 +63,20 @@ export async function createIncident(incident: {
     .select()
     .single();
   if (error) throw error;
+  
+  await logAudit({
+    action: "create",
+    entity_type: "incident",
+    entity_id: data.id,
+    details: { title: incident.title, severity: incident.severity, status: incident.status },
+  });
+  
   return data as Incident;
 }
 
 export async function updateIncident(
   id: string,
-  patch: Partial<Pick<Incident, "summary" | "severity" | "status">>
+  patch: Partial<Pick<Incident, "summary" | "severity" | "status" | "assigned_to">>
 ): Promise<Incident> {
   const { data, error } = await supabase
     .from("incidents")
@@ -74,12 +85,26 @@ export async function updateIncident(
     .select()
     .single();
   if (error) throw error;
+  
+  await logAudit({
+    action: "update",
+    entity_type: "incident",
+    entity_id: id,
+    details: { changes: patch },
+  });
+  
   return data as Incident;
 }
 
 export async function deleteIncident(id: string): Promise<void> {
   const { error } = await supabase.from("incidents").delete().eq("id", id);
   if (error) throw error;
+  
+  await logAudit({
+    action: "delete",
+    entity_type: "incident",
+    entity_id: id,
+  });
 }
 
 export interface IncidentFilterParams {

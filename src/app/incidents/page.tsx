@@ -10,6 +10,7 @@ import {
   IncidentFilterParams,
 } from "@/services/incidents";
 import { getActiveOrgDetails, Organization } from "@/services/org";
+import { getMyRoleInActiveOrg } from "@/services/members";
 
 const severityColors: Record<string, string> = {
   low: "bg-blue-900/50 text-blue-300 border-blue-700",
@@ -30,6 +31,7 @@ export default function IncidentsPage() {
   const router = useRouter();
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [activeOrg, setActiveOrg] = useState<Organization | null>(null);
+  const [myRole, setMyRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +73,8 @@ export default function IncidentsPage() {
           return;
         }
         setActiveOrg(org);
+        const role = await getMyRoleInActiveOrg();
+        setMyRole(role);
         await fetchIncidents();
       } catch {
         router.push("/login");
@@ -165,12 +169,14 @@ export default function IncidentsPage() {
             >
               Organizations
             </Link>
-            <Link
-              href="/incidents/new"
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500"
-            >
-              Create Incident
-            </Link>
+            {myRole && myRole !== "viewer" && (
+              <Link
+                href="/incidents/new"
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500"
+              >
+                Create Incident
+              </Link>
+            )}
             <Link
               href="/profile"
               className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 hover:text-white"

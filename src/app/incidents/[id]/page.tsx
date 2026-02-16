@@ -22,6 +22,7 @@ import {
   EvidenceRecord,
 } from "@/services/evidence";
 import { getProfilesByIds, Profile } from "@/services/profiles";
+import { getMyRoleInActiveOrg, listMembers, MemberRecord } from "@/services/members";
 
 const SEVERITIES = ["low", "medium", "high", "critical"];
 const STATUSES = ["open", "investigating", "contained", "eradicated", "closed"];
@@ -75,6 +76,7 @@ export default function IncidentDetailPage() {
   const [summary, setSummary] = useState("");
   const [severity, setSeverity] = useState("");
   const [status, setStatus] = useState("");
+  const [assignedTo, setAssignedTo] = useState<string>("");
 
   // Timeline state
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
@@ -92,6 +94,8 @@ export default function IncidentDetailPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [profileMap, setProfileMap] = useState<Record<string, Profile>>({});
+  const [myRole, setMyRole] = useState<string | null>(null);
+  const [orgMembers, setOrgMembers] = useState<MemberRecord[]>([]);
 
   const fetchEvidence = useCallback(async () => {
     setEvidenceLoading(true);
@@ -136,6 +140,7 @@ export default function IncidentDetailPage() {
         setSummary(data.summary || "");
         setSeverity(data.severity);
         setStatus(data.status);
+        setAssignedTo(data.assigned_to || "");
         const [entries] = await Promise.all([
           listTimeline(id),
           fetchEvidence(),
@@ -150,6 +155,12 @@ export default function IncidentDetailPage() {
           const profiles = await getProfilesByIds(Array.from(userIds));
           setProfileMap(profiles);
         }
+
+        const role = await getMyRoleInActiveOrg();
+        setMyRole(role);
+
+        const members = await listMembers();
+        setOrgMembers(members);
       } catch (err: unknown) {
         setError(
           err instanceof Error ? err.message : "Failed to load incident"
@@ -166,7 +177,12 @@ export default function IncidentDetailPage() {
     setError(null);
     setSuccessMsg(null);
     try {
-      const updated = await updateIncident(id, { summary, severity, status });
+      const updated = await updateIncident(id, { 
+        summary, 
+        severity, 
+        status,
+        assigned_to: assignedTo || null 
+      });
       setIncident(updated);
       setSuccessMsg("Incident updated successfully.");
     } catch (err: unknown) {
@@ -416,24 +432,50 @@ export default function IncidentDetailPage() {
                 ))}
               </select>
             </div>
+            <div>
+              <label
+                htmlFor="assignedTo"
+                className="block text-sm font-medium text-zinc-300"
+              >
+                Assigned To
+              </label>
+              <select
+                id="assignedTo"
+                value={assignedTo}
+                onChange={(e) => setAssignedTo(e.target.value)}
+                disabled={myRole === "viewer"}
+                className="mt-1 block w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
+              >
+                <option value="">Unassigned</option>
+                {orgMembers.map((member) => (
+                  <option key={member.user_id} value={member.user_id}>
+                    {profileMap[member.user_id]?.display_name || member.user_id.slice(0, 8) + "…"}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Actions */}
           <div className="flex items-center justify-between pt-2">
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className="rounded-lg border border-red-800 px-4 py-2 text-sm font-medium text-red-400 transition hover:bg-red-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {deleting ? "Deleting…" : "Delete Incident"}
-            </button>
-            <button
-              onClick={handleUpdate}
-              disabled={saving}
-              className="rounded-lg bg-indigo-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {saving ? "Saving…" : "Save Changes"}
-            </button>
+            {myRole === "admin" && (
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="rounded-lg border border-red-800 px-4 py-2 text-sm font-medium text-red-400 transition hover:bg-red-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deleting ? "Deleting…" : "Delete Incident"}
+              </button>
+            )}
+            {myRole && myRole !== "viewer" && (
+              <button
+                onClick={handleUpdate}
+                disabled={saving}
+                className="rounded-lg bg-indigo-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed ml-auto"
+              >
+                {saving ? "Saving…" : "Save Changes"}
+              </button>
+            )}
           </div>
         </div>
 
@@ -442,7 +484,8 @@ export default function IncidentDetailPage() {
           <h2 className="text-lg font-semibold text-white mb-4">Timeline</h2>
 
           {/* Add Entry Form */}
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-5 mb-6">
+          {myRole && myRole !== "viewer" && (
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-5 mb-6">
             <div className="space-y-3">
               <div>
                 <label
@@ -489,6 +532,7 @@ export default function IncidentDetailPage() {
               </button>
             </div>
           </div>
+          )}
 
           {/* Timeline Error */}
           {timelineError && (
@@ -562,7 +606,8 @@ export default function IncidentDetailPage() {
           <h2 className="text-lg font-semibold text-white mb-4">Evidence</h2>
 
           {/* Upload Form */}
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-5 mb-6">
+          {myRole && myRole !== "viewer" && (
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-5 mb-6">
             <div className="space-y-3">
               <div>
                 <label
@@ -589,6 +634,7 @@ export default function IncidentDetailPage() {
               </button>
             </div>
           </div>
+          )}
 
           {/* Evidence Error */}
           {evidenceError && (
