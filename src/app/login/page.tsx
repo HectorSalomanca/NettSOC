@@ -19,7 +19,7 @@ export default function LoginPage() {
     setMessage(null);
     try {
       await signIn(email, password);
-      router.push("/notes");
+      router.push("/incidents");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Sign in failed");
     } finally {
@@ -35,7 +35,7 @@ export default function LoginPage() {
     try {
       const data = await signUp(email, password);
       if (data.session) {
-        router.push("/notes");
+        router.push("/incidents");
       } else {
         setMessage("Check your email to confirm your account, then sign in.");
       }
@@ -51,10 +51,10 @@ export default function LoginPage() {
       <div className="w-full max-w-sm space-y-8">
         <div className="text-center">
           <h1 className="text-3xl font-bold tracking-tight text-white">
-            Secure Notes
+            NettSOC
           </h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Sign in or create an account
+            Cybersecurity Incident Tracker
           </p>
         </div>
 

@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Secure Notes",
-  description: "A secure notes app with Supabase auth and RLS",
+  title: "NettSOC",
+  description: "Professional cybersecurity incident tracker",
 };
 
 export default function RootLayout({
