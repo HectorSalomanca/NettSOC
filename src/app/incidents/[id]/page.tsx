@@ -23,6 +23,9 @@ import {
 } from "@/services/evidence";
 import { getProfilesByIds, Profile } from "@/services/profiles";
 import { getMyRoleInActiveOrg, listMembers, MemberRecord } from "@/services/members";
+import { listComments, createComment, deleteComment, Comment } from "@/services/comments";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 const SEVERITIES = ["low", "medium", "high", "critical"];
 const STATUSES = ["open", "investigating", "contained", "eradicated", "closed"];
@@ -96,6 +99,15 @@ export default function IncidentDetailPage() {
   const [profileMap, setProfileMap] = useState<Record<string, Profile>>({});
   const [myRole, setMyRole] = useState<string | null>(null);
   const [orgMembers, setOrgMembers] = useState<MemberRecord[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // Comments state
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(true);
+  const [commentsError, setCommentsError] = useState<string | null>(null);
+  const [newComment, setNewComment] = useState("");
+  const [addingComment, setAddingComment] = useState(false);
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
 
   const fetchEvidence = useCallback(async () => {
     setEvidenceLoading(true);
@@ -109,6 +121,21 @@ export default function IncidentDetailPage() {
       );
     } finally {
       setEvidenceLoading(false);
+    }
+  }, [id]);
+
+  const fetchComments = useCallback(async () => {
+    setCommentsLoading(true);
+    setCommentsError(null);
+    try {
+      const rows = await listComments(id);
+      setComments(rows);
+    } catch (err: unknown) {
+      setCommentsError(
+        err instanceof Error ? err.message : "Failed to load comments"
+      );
+    } finally {
+      setCommentsLoading(false);
     }
   }, [id]);
 
@@ -135,6 +162,7 @@ export default function IncidentDetailPage() {
           router.push("/login");
           return;
         }
+        setCurrentUserId(session.user.id);
         const data = await getIncidentById(id);
         setIncident(data);
         setSummary(data.summary || "");
@@ -144,6 +172,7 @@ export default function IncidentDetailPage() {
         const [entries] = await Promise.all([
           listTimeline(id),
           fetchEvidence(),
+          fetchComments(),
         ]);
         setTimeline(entries);
         setTimelineLoading(false);
@@ -161,6 +190,10 @@ export default function IncidentDetailPage() {
 
         const members = await listMembers();
         setOrgMembers(members);
+
+        const commentsList = await listComments(id);
+        setComments(commentsList);
+        setCommentsLoading(false);
       } catch (err: unknown) {
         setError(
           err instanceof Error ? err.message : "Failed to load incident"
@@ -247,14 +280,39 @@ export default function IncidentDetailPage() {
   }
 
   async function handleCopyLink(record: EvidenceRecord) {
-    setEvidenceError(null);
+    const url = `${window.location.origin}/incidents/${id}/evidence/${record.id}`;
+    await navigator.clipboard.writeText(url);
+  }
+
+  async function handleAddComment() {
+    if (!newComment.trim()) return;
+    setAddingComment(true);
+    setCommentsError(null);
     try {
-      const url = await getSignedEvidenceUrl(record.file_path);
-      await navigator.clipboard.writeText(url);
+      await createComment({ incidentId: id, content: newComment.trim() });
+      setNewComment("");
+      await fetchComments();
     } catch (err: unknown) {
-      setEvidenceError(
-        err instanceof Error ? err.message : "Failed to copy link"
+      setCommentsError(
+        err instanceof Error ? err.message : "Failed to add comment"
       );
+    } finally {
+      setAddingComment(false);
+    }
+  }
+
+  async function handleDeleteComment(commentId: string) {
+    setDeletingCommentId(commentId);
+    setCommentsError(null);
+    try {
+      await deleteComment(commentId);
+      await fetchComments();
+    } catch (err: unknown) {
+      setCommentsError(
+        err instanceof Error ? err.message : "Failed to delete comment"
+      );
+    } finally {
+      setDeletingCommentId(null);
     }
   }
 
@@ -379,15 +437,26 @@ export default function IncidentDetailPage() {
               htmlFor="summary"
               className="block text-sm font-medium text-zinc-300"
             >
-              Summary
+              Summary (Markdown supported)
             </label>
             <textarea
               id="summary"
               rows={4}
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
+              placeholder="Describe the incident... You can use **bold**, *italic*, and other markdown formatting."
               className="mt-1 block w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-white placeholder-zinc-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-y"
             />
+            {summary && (
+              <div className="mt-2 rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2">
+                <p className="text-xs text-zinc-500 mb-1">Preview:</p>
+                <div className="prose prose-invert prose-sm max-w-none">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {summary}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Severity + Status */}
@@ -706,6 +775,119 @@ export default function IncidentDetailPage() {
                     >
                       Copy Link
                     </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Comments Section */}
+        <div className="mt-8">
+          <h2 className="text-lg font-semibold text-white mb-4">Discussion</h2>
+
+          {/* Add Comment Form */}
+          {myRole && myRole !== "viewer" && (
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-5 mb-6">
+              <div className="space-y-3">
+                <div>
+                  <label
+                    htmlFor="commentContent"
+                    className="block text-sm font-medium text-zinc-300 mb-1"
+                  >
+                    Add Comment (Markdown supported)
+                  </label>
+                  <textarea
+                    id="commentContent"
+                    rows={4}
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    placeholder="Write your comment here... You can use **bold**, *italic*, and other markdown formatting."
+                    className="block w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-white placeholder-zinc-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-y"
+                  />
+                </div>
+                <button
+                  onClick={handleAddComment}
+                  disabled={addingComment || !newComment.trim()}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {addingComment ? "Adding…" : "Add Comment"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Comments Error */}
+          {commentsError && (
+            <div className="mb-4 rounded-lg bg-red-900/50 border border-red-700 px-4 py-3 text-sm text-red-300">
+              {commentsError}
+            </div>
+          )}
+
+          {/* Comments List */}
+          {commentsLoading ? (
+            <div className="flex items-center gap-3 text-zinc-400 py-6">
+              <svg
+                className="h-4 w-4 animate-spin"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
+              </svg>
+              <span className="text-sm">Loading comments…</span>
+            </div>
+          ) : comments.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-zinc-700 py-10 text-center">
+              <p className="text-zinc-500 text-sm">No comments yet. Start the discussion!</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {comments.map((comment) => (
+                <div
+                  key={comment.id}
+                  className="rounded-lg border border-zinc-800 bg-zinc-900 px-5 py-4"
+                >
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div className="flex items-center gap-2 text-xs text-zinc-500">
+                      <span className="font-medium text-zinc-300">
+                        {profileMap[comment.user_id]?.display_name || comment.user_id.slice(0, 8) + "…"}
+                      </span>
+                      <span>·</span>
+                      <span>{new Date(comment.created_at).toLocaleString()}</span>
+                      {comment.updated_at !== comment.created_at && (
+                        <>
+                          <span>·</span>
+                          <span className="italic">edited</span>
+                        </>
+                      )}
+                    </div>
+                    {(myRole === "admin" || comment.user_id === currentUserId) && (
+                      <button
+                        onClick={() => handleDeleteComment(comment.id)}
+                        disabled={deletingCommentId === comment.id}
+                        className="text-xs text-red-400 hover:text-red-300 transition disabled:opacity-50"
+                      >
+                        {deletingCommentId === comment.id ? "Deleting…" : "Delete"}
+                      </button>
+                    )}
+                  </div>
+                  <div className="prose prose-invert prose-sm max-w-none">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {comment.content}
+                    </ReactMarkdown>
                   </div>
                 </div>
               ))}
