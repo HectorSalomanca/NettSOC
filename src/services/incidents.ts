@@ -1,6 +1,8 @@
 import { supabase } from "@/lib/supabaseClient";
 import { getActiveOrg } from "@/services/org";
 import { logAudit } from "@/services/audit";
+import { logActivity } from "@/services/activity";
+import { createNotification } from "@/services/notifications_v2";
 
 export interface Incident {
   id: string;
@@ -72,6 +74,44 @@ export async function createIncident(incident: {
     entity_id: data.id,
     details: { title: incident.title, severity: incident.severity, status: incident.status },
   });
+
+  // Log activity
+  await logActivity({
+    action: "created",
+    entityType: "incident",
+    entityId: data.id,
+    entityTitle: incident.title,
+    details: { severity: incident.severity, status: incident.status },
+  });
+
+  // Notify if critical
+  if (incident.severity === "critical") {
+    // Get all org members and notify them
+    try {
+      const { data: currentUser } = await supabase.auth.getUser();
+      const { data: members } = await supabase
+        .from("org_members")
+        .select("user_id")
+        .eq("org_id", orgId);
+      
+      if (members && currentUser?.user) {
+        for (const member of members) {
+          if (member.user_id !== currentUser.user.id) {
+            await createNotification({
+              userId: member.user_id,
+              type: "incident_critical",
+              title: "Critical Incident Created",
+              message: `A critical incident was created: ${incident.title}`,
+              entityType: "incident",
+              entityId: data.id,
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to send critical incident notifications:", err);
+    }
+  }
   
   return data as Incident;
 }
@@ -104,11 +144,53 @@ export async function updateIncident(
     entity_id: id,
     details: { changes: patch },
   });
+
+  // Log activity
+  await logActivity({
+    action: "updated",
+    entityType: "incident",
+    entityId: id,
+    entityTitle: data.title,
+    details: { changes: patch },
+  });
+
+  // Notify on assignment
+  if (patch.assigned_to) {
+    try {
+      await createNotification({
+        userId: patch.assigned_to,
+        type: "incident_assign",
+        title: "You were assigned to an incident",
+        message: `You have been assigned to: ${data.title}`,
+        entityType: "incident",
+        entityId: id,
+      });
+    } catch (err) {
+      console.error("Failed to send assignment notification:", err);
+    }
+  }
+
+  // Notify on status change to closed
+  if (patch.status === "closed") {
+    await logActivity({
+      action: "closed",
+      entityType: "incident",
+      entityId: id,
+      entityTitle: data.title,
+    });
+  }
   
   return data as Incident;
 }
 
 export async function deleteIncident(id: string): Promise<void> {
+  // Get incident title before deleting
+  const { data: incident } = await supabase
+    .from("incidents")
+    .select("title")
+    .eq("id", id)
+    .single();
+
   const { error } = await supabase.from("incidents").delete().eq("id", id);
   if (error) throw error;
   
@@ -117,6 +199,16 @@ export async function deleteIncident(id: string): Promise<void> {
     entity_type: "incident",
     entity_id: id,
   });
+
+  // Log activity
+  if (incident) {
+    await logActivity({
+      action: "deleted",
+      entityType: "incident",
+      entityId: id,
+      entityTitle: incident.title,
+    });
+  }
 }
 
 export interface IncidentFilterParams {

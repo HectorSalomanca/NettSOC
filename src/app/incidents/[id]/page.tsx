@@ -342,7 +342,11 @@ export default function IncidentDetailPage() {
     setAddingComment(true);
     setCommentsError(null);
     try {
-      await createComment({ incidentId: id, content: newComment.trim() });
+      await createComment({ 
+        incidentId: id, 
+        content: newComment.trim(),
+        incidentTitle: incident?.title 
+      });
       setNewComment("");
       await fetchComments();
     } catch (err: unknown) {
@@ -1064,34 +1068,61 @@ export default function IncidentDetailPage() {
                   key={comment.id}
                   className="rounded-xl bg-white shadow-sm px-5 py-4"
                 >
-                  <div className="flex items-start justify-between gap-4 mb-3">
-                    <div className="flex items-center gap-2 text-xs text-muted">
-                      <span className="font-medium text-foreground">
-                        {profileMap[comment.user_id]?.display_name || comment.user_id.slice(0, 8) + "…"}
-                      </span>
-                      <span>·</span>
-                      <span>{new Date(comment.created_at).toLocaleString()}</span>
-                      {comment.updated_at !== comment.created_at && (
-                        <>
-                          <span>·</span>
-                          <span className="italic">edited</span>
-                        </>
+                  <div className="flex items-start gap-3">
+                    {/* Avatar */}
+                    <div className="shrink-0">
+                      {profileMap[comment.user_id]?.avatar_url ? (
+                        <img
+                          src={profileMap[comment.user_id].avatar_url || ""}
+                          alt={profileMap[comment.user_id]?.display_name || "User"}
+                          className="h-10 w-10 rounded-full object-cover border border-border"
+                        />
+                      ) : (
+                        <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center border border-border">
+                          <span className="text-sm font-medium text-accent">
+                            {(profileMap[comment.user_id]?.display_name || "?").charAt(0).toUpperCase()}
+                          </span>
+                        </div>
                       )}
                     </div>
-                    {(myRole === "admin" || comment.user_id === currentUserId) && (
-                      <button
-                        onClick={() => handleDeleteComment(comment.id)}
-                        disabled={deletingCommentId === comment.id}
-                        className="text-xs text-red-500 hover:text-red-400 transition disabled:opacity-50"
-                      >
-                        {deletingCommentId === comment.id ? "Deleting…" : "Delete"}
-                      </button>
-                    )}
-                  </div>
-                  <div className="prose prose-sm max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {comment.content}
-                    </ReactMarkdown>
+
+                    {/* Comment Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-4 mb-2">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-semibold text-foreground">
+                            {profileMap[comment.user_id]?.display_name || comment.user_id.slice(0, 8) + "…"}
+                          </span>
+                          {profileMap[comment.user_id]?.role && (
+                            <span className="text-xs text-muted">
+                              {profileMap[comment.user_id].role}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-muted whitespace-nowrap">
+                            {new Date(comment.created_at).toLocaleString()}
+                            {comment.updated_at !== comment.created_at && (
+                              <span className="ml-1 italic">(edited)</span>
+                            )}
+                          </span>
+                          {(myRole === "admin" || comment.user_id === currentUserId) && (
+                            <button
+                              onClick={() => handleDeleteComment(comment.id)}
+                              disabled={deletingCommentId === comment.id}
+                              className="text-xs text-red-500 hover:text-red-400 transition disabled:opacity-50"
+                            >
+                              {deletingCommentId === comment.id ? "Deleting…" : "Delete"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="prose prose-sm max-w-none">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {comment.content}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}

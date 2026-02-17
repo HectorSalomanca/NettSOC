@@ -210,19 +210,39 @@ export default function MembersPage() {
               {members.map((member, idx) => (
                 <div
                   key={member.id}
-                  className={`flex items-center justify-between px-5 py-3.5 ${
+                  className={`flex items-center gap-3 px-5 py-3.5 ${
                     idx !== 0 ? "border-t border-border" : ""
                   }`}
                 >
+                  {/* Avatar */}
+                  <div className="shrink-0">
+                    {profileMap[member.user_id]?.avatar_url ? (
+                      <img
+                        src={profileMap[member.user_id].avatar_url || ""}
+                        alt={profileMap[member.user_id]?.display_name || "User"}
+                        className="h-10 w-10 rounded-full object-cover border border-border"
+                      />
+                    ) : (
+                      <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center border border-border">
+                        <span className="text-sm font-medium text-accent">
+                          {(profileMap[member.user_id]?.display_name || "?").charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Member Info */}
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground truncate">
                       {profileMap[member.user_id]?.display_name || "Unnamed User"}
                     </p>
                     <p className="text-xs text-muted">
-                      {member.user_id.slice(0, 8)}… · Joined{" "}
+                      {profileMap[member.user_id]?.role || "No role set"} · Joined{" "}
                       {new Date(member.created_at).toLocaleDateString()}
                     </p>
                   </div>
+
+                  {/* Actions */}
                   <div className="flex items-center gap-2 ml-3">
                     {isAdmin ? (
                       <>

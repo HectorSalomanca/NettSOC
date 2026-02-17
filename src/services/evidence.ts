@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabaseClient";
 import { getActiveOrg } from "@/services/org";
+import { logActivity } from "@/services/activity";
 
 export interface EvidenceRecord {
   id: string;
@@ -15,7 +16,8 @@ export interface EvidenceRecord {
 
 export async function uploadEvidence(
   incidentId: string,
-  file: File
+  file: File,
+  incidentTitle?: string
 ): Promise<EvidenceRecord> {
   const {
     data: { session },
@@ -52,6 +54,15 @@ export async function uploadEvidence(
     .select()
     .single();
   if (insertError) throw insertError;
+
+  // Log activity
+  await logActivity({
+    action: "uploaded",
+    entityType: "evidence",
+    entityId: data.id,
+    entityTitle: file.name,
+    details: { incident_id: incidentId, incident_title: incidentTitle },
+  });
 
   return data as EvidenceRecord;
 }

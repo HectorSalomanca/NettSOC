@@ -1,6 +1,10 @@
 import { supabase } from "@/lib/supabaseClient";
 import { getActiveOrg } from "@/services/org";
 import { logAudit } from "@/services/audit";
+import { createNotification } from "@/services/notifications_v2";
+import { logActivity } from "@/services/activity";
+import { listMembers } from "@/services/members";
+import { getProfilesByIds } from "@/services/profiles";
 
 export interface Comment {
   id: string;
@@ -31,6 +35,7 @@ export async function createComment(params: {
   incidentId: string;
   content: string;
   parentId?: string;
+  incidentTitle?: string;
 }): Promise<Comment> {
   const { data: userData, error: userErr } = await supabase.auth.getUser();
   if (userErr || !userData?.user) throw userErr ?? new Error("Not signed in");
@@ -58,7 +63,52 @@ export async function createComment(params: {
     details: { incident_id: params.incidentId },
   });
 
+  // Log activity
+  await logActivity({
+    action: "commented",
+    entityType: "incident",
+    entityId: params.incidentId,
+    entityTitle: params.incidentTitle,
+    details: { comment_preview: params.content.substring(0, 100) },
+  });
+
+  // Parse @mentions and create notifications
+  const mentions = parseMentions(params.content);
+  if (mentions.length > 0) {
+    try {
+      const members = await listMembers();
+      const userIds = members.map(m => m.user_id);
+      const profiles = await getProfilesByIds(userIds);
+      
+      for (const mention of mentions) {
+        // Find user by display_name
+        const mentionedUser = Object.values(profiles).find(
+          p => p.display_name.toLowerCase() === mention.toLowerCase()
+        );
+        
+        if (mentionedUser && mentionedUser.id !== userData.user.id) {
+          await createNotification({
+            userId: mentionedUser.id,
+            type: "mention",
+            title: "You were mentioned in a comment",
+            message: `${profiles[userData.user.id]?.display_name || "Someone"} mentioned you in ${params.incidentTitle || "an incident"}`,
+            entityType: "incident",
+            entityId: params.incidentId,
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to process mentions:", err);
+    }
+  }
+
   return data as Comment;
+}
+
+function parseMentions(content: string): string[] {
+  const mentionRegex = /@([a-zA-Z0-9_-]+)/g;
+  const matches = content.matchAll(mentionRegex);
+  return Array.from(matches, m => m[1]);
 }
 
 export async function updateComment(
