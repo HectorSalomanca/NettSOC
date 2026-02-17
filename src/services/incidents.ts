@@ -14,6 +14,7 @@ export interface Incident {
   org_id: string;
   assigned_to?: string | null;
   due_at?: string | null;
+  closed_at?: string | null;
 }
 
 export async function listIncidents(): Promise<Incident[]> {
@@ -79,9 +80,19 @@ export async function updateIncident(
   id: string,
   patch: Partial<Pick<Incident, "summary" | "severity" | "status" | "assigned_to" | "due_at">>
 ): Promise<Incident> {
+  // Set closed_at only on first transition to closed
+  const updatePayload: Record<string, unknown> = { ...patch, updated_at: new Date().toISOString() };
+  if (patch.status === "closed") {
+    // Only set closed_at if it hasn't been set before
+    const { data: current } = await supabase.from("incidents").select("closed_at").eq("id", id).single();
+    if (!current?.closed_at) {
+      updatePayload.closed_at = new Date().toISOString();
+    }
+  }
+
   const { data, error } = await supabase
     .from("incidents")
-    .update({ ...patch, updated_at: new Date().toISOString() })
+    .update(updatePayload)
     .eq("id", id)
     .select()
     .single();
@@ -246,4 +257,98 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     .slice(0, 5);
 
   return { statusCounts, severityCounts, criticalOpen, recentlyUpdated, assignedToMe, unassigned };
+}
+
+// --- Operational Risk ---
+
+export interface OperationalRiskStats {
+  onTrack: number;
+  dueSoon: number;
+  overdue: number;
+  total: number;
+}
+
+export async function getOperationalRiskStats(): Promise<OperationalRiskStats> {
+  const orgId = getActiveOrg();
+  if (!orgId) throw new Error("No active organization");
+
+  const { data, error } = await supabase
+    .from("incidents")
+    .select("id, status, due_at")
+    .eq("org_id", orgId)
+    .neq("status", "closed");
+  if (error) throw error;
+
+  const now = new Date();
+  const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+  let onTrack = 0;
+  let dueSoon = 0;
+  let overdue = 0;
+
+  for (const inc of data) {
+    if (!inc.due_at) {
+      onTrack++;
+    } else {
+      const due = new Date(inc.due_at);
+      if (due.getTime() < now.getTime()) {
+        overdue++;
+      } else if (due.getTime() < in24h.getTime()) {
+        dueSoon++;
+      } else {
+        onTrack++;
+      }
+    }
+  }
+
+  return { onTrack, dueSoon, overdue, total: data.length };
+}
+
+// --- MTTR (Mean Time To Resolve) ---
+
+export interface MttrStats {
+  medianHours: number | null;
+  p90Hours: number | null;
+  count: number;
+}
+
+export async function getMttrStats(): Promise<MttrStats> {
+  const orgId = getActiveOrg();
+  if (!orgId) throw new Error("No active organization");
+
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from("incidents")
+    .select("created_at, closed_at")
+    .eq("org_id", orgId)
+    .eq("status", "closed")
+    .not("closed_at", "is", null)
+    .gte("closed_at", thirtyDaysAgo);
+  if (error) throw error;
+
+  if (!data || data.length === 0) {
+    return { medianHours: null, p90Hours: null, count: 0 };
+  }
+
+  const resolveTimesMs = data
+    .map((inc) => new Date(inc.closed_at).getTime() - new Date(inc.created_at).getTime())
+    .filter((ms) => ms > 0)
+    .sort((a, b) => a - b);
+
+  if (resolveTimesMs.length === 0) {
+    return { medianHours: null, p90Hours: null, count: 0 };
+  }
+
+  const median = resolveTimesMs[Math.floor(resolveTimesMs.length / 2)];
+  const p90Idx = Math.min(Math.ceil(resolveTimesMs.length * 0.9) - 1, resolveTimesMs.length - 1);
+  const p90 = resolveTimesMs[p90Idx];
+
+  const msToHours = (ms: number) => Math.round((ms / (1000 * 60 * 60)) * 10) / 10;
+
+  return {
+    medianHours: msToHours(median),
+    p90Hours: msToHours(p90),
+    count: resolveTimesMs.length,
+  };
 }

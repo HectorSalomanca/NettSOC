@@ -10,8 +10,8 @@ export default function JoinPageWrapper() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-zinc-950">
-          <p className="text-zinc-400">Loading…</p>
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <p className="text-muted">Loading…</p>
         </div>
       }
     >
@@ -72,8 +72,8 @@ function JoinPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-950">
-        <div className="flex items-center gap-3 text-zinc-400">
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex items-center gap-3 text-muted">
           <svg
             className="h-5 w-5 animate-spin"
             xmlns="http://www.w3.org/2000/svg"
@@ -101,24 +101,24 @@ function JoinPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-950 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-md">
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-8">
-          <h1 className="text-2xl font-bold text-white mb-2">
+        <div className="rounded-2xl bg-white shadow-sm p-8">
+          <h1 className="text-2xl font-bold text-foreground mb-2">
             Join Organization
           </h1>
-          <p className="text-sm text-zinc-500 mb-6">
+          <p className="text-sm text-muted mb-6">
             Enter the invite code you received to join an organization.
           </p>
 
           {error && (
-            <div className="mb-4 rounded-lg bg-red-900/50 border border-red-700 px-4 py-3 text-sm text-red-300">
+            <div className="mb-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
               {error}
             </div>
           )}
 
           {success ? (
-            <div className="rounded-lg bg-green-900/50 border border-green-700 px-4 py-3 text-sm text-green-300">
+            <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-600">
               Successfully joined! Redirecting to dashboard…
             </div>
           ) : (
@@ -126,7 +126,7 @@ function JoinPage() {
               <div>
                 <label
                   htmlFor="code"
-                  className="block text-sm font-medium text-zinc-300 mb-1"
+                  className="block text-sm font-medium text-foreground mb-1"
                 >
                   Invite Code
                 </label>
@@ -137,13 +137,13 @@ function JoinPage() {
                   value={code}
                   onChange={(e) => setCode(e.target.value.toUpperCase())}
                   placeholder="e.g. AB3K7XNP2Q"
-                  className="block w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-lg font-mono tracking-widest text-white placeholder-zinc-500 text-center focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className="block w-full rounded-xl border border-border bg-background px-3 py-2.5 text-lg font-mono tracking-widest text-foreground placeholder-muted text-center focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
                 />
               </div>
               <button
                 type="submit"
                 disabled={joining || !code.trim()}
-                className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {joining ? "Joining…" : "Join Organization"}
               </button>
@@ -153,13 +153,13 @@ function JoinPage() {
           <div className="mt-6 flex justify-center gap-4 text-xs">
             <Link
               href="/dashboard"
-              className="text-zinc-500 transition hover:text-white"
+              className="text-muted transition hover:text-foreground"
             >
               Dashboard
             </Link>
             <Link
               href="/org"
-              className="text-zinc-500 transition hover:text-white"
+              className="text-muted transition hover:text-foreground"
             >
               My Organizations
             </Link>

@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { getSession, signOut } from "@/services/auth";
+import { getSession } from "@/services/auth";
 import {
   listIncidentsAdvanced,
   Incident,
@@ -11,20 +11,21 @@ import {
 } from "@/services/incidents";
 import { getActiveOrgDetails, Organization } from "@/services/org";
 import { getMyRoleInActiveOrg } from "@/services/members";
+import AppShell from "@/components/AppShell";
 
 const severityColors: Record<string, string> = {
-  low: "bg-blue-900/50 text-blue-300 border-blue-700",
-  medium: "bg-yellow-900/50 text-yellow-300 border-yellow-700",
-  high: "bg-orange-900/50 text-orange-300 border-orange-700",
-  critical: "bg-red-900/50 text-red-300 border-red-700",
+  low: "bg-blue-50 text-blue-600",
+  medium: "bg-amber-50 text-amber-600",
+  high: "bg-orange-50 text-orange-600",
+  critical: "bg-red-50 text-red-600",
 };
 
 const statusColors: Record<string, string> = {
-  open: "bg-red-900/40 text-red-300",
-  investigating: "bg-yellow-900/40 text-yellow-300",
-  contained: "bg-blue-900/40 text-blue-300",
-  eradicated: "bg-emerald-900/40 text-emerald-300",
-  closed: "bg-zinc-800 text-zinc-400",
+  open: "bg-red-50 text-red-600",
+  investigating: "bg-amber-50 text-amber-600",
+  contained: "bg-blue-50 text-blue-600",
+  eradicated: "bg-emerald-50 text-emerald-600",
+  closed: "bg-zinc-100 text-zinc-500",
 };
 
 function IncidentsPageContent() {
@@ -42,12 +43,31 @@ function IncidentsPageContent() {
   const [status, setStatus] = useState(searchParams.get("status") || "all");
   const [owner, setOwner] = useState<"any" | "me">("any");
   const [sort, setSort] = useState<IncidentFilterParams["sort"]>("created_desc");
+  const riskParam = searchParams.get("risk");
 
   const fetchIncidents = useCallback(
-    async (params: IncidentFilterParams = {}) => {
+    async (params: IncidentFilterParams = {}, riskFilter?: string | null) => {
       try {
         setSearching(true);
-        const data = await listIncidentsAdvanced(params);
+        let data = await listIncidentsAdvanced(params);
+
+        // Client-side risk filtering
+        if (riskFilter) {
+          const now = new Date();
+          const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+          data = data.filter((inc) => {
+            if (inc.status === "closed") return false;
+            if (riskFilter === "overdue") {
+              return inc.due_at && new Date(inc.due_at).getTime() < now.getTime();
+            } else if (riskFilter === "duesoon") {
+              return inc.due_at && new Date(inc.due_at).getTime() >= now.getTime() && new Date(inc.due_at).getTime() < in24h.getTime();
+            } else if (riskFilter === "ontrack") {
+              return !inc.due_at || new Date(inc.due_at).getTime() >= in24h.getTime();
+            }
+            return true;
+          });
+        }
+
         setIncidents(data);
       } catch (err: unknown) {
         setError(
@@ -78,12 +98,15 @@ function IncidentsPageContent() {
         setMyRole(role);
         
         // Auto-apply filters from URL params
-        await fetchIncidents({ 
-          severity: severity !== "all" ? severity : undefined,
-          status: status !== "all" ? status : undefined,
-          owner,
-          sort 
-        });
+        await fetchIncidents(
+          { 
+            severity: severity !== "all" ? severity : undefined,
+            status: riskParam ? undefined : (status !== "all" ? status : undefined),
+            owner,
+            sort 
+          },
+          riskParam
+        );
       } catch {
         router.push("/login");
       } finally {
@@ -95,7 +118,7 @@ function IncidentsPageContent() {
 
   function handleApplyFilters() {
     setError(null);
-    fetchIncidents({ q: q || undefined, severity, status, owner, sort });
+    fetchIncidents({ q: q || undefined, severity, status, owner, sort }, riskParam);
   }
 
   function handleReset() {
@@ -108,273 +131,221 @@ function IncidentsPageContent() {
     fetchIncidents();
   }
 
-  async function handleSignOut() {
-    try {
-      await signOut();
-      router.push("/login");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to sign out");
-    }
-  }
-
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-950">
-        <div className="flex items-center gap-3 text-zinc-400">
-          <svg
-            className="h-5 w-5 animate-spin"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            />
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-            />
-          </svg>
-          Loading…
+      <AppShell title="Incidents" subtitle="Loading...">
+        <div className="space-y-3">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="rounded-2xl bg-white px-5 py-4 shadow-sm animate-pulse">
+              <div className="h-4 w-48 rounded bg-zinc-200" />
+              <div className="mt-2 h-3 w-32 rounded bg-zinc-100" />
+            </div>
+          ))}
         </div>
-      </div>
+      </AppShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-4 py-8">
-      <div className="mx-auto max-w-4xl">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-bold text-white">NettSOC</h1>
-            <p className="text-sm text-zinc-500">
-              {activeOrg ? activeOrg.name : "Incident Tracker"}
-            </p>
+    <AppShell
+      title="Incidents"
+      subtitle={activeOrg ? activeOrg.name : "Incident Tracker"}
+      actionLabel="New Incident"
+      actionHref="/incidents/new"
+      showAction={myRole !== null && myRole !== "viewer"}
+    >
+      {/* Active risk filter banner */}
+      {riskParam && (
+        <div className="mb-4 flex items-center gap-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-2.5">
+          <span className="text-sm text-amber-700 font-medium">
+            Showing: {riskParam === "ontrack" ? "On Track" : riskParam === "duesoon" ? "Due Soon" : riskParam === "overdue" ? "Overdue" : riskParam} incidents
+          </span>
+          <Link
+            href="/incidents"
+            className="ml-auto rounded-lg bg-white border border-amber-200 px-3 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100 transition"
+          >
+            Clear Filter
+          </Link>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {/* Search */}
+          <div className="sm:col-span-2 lg:col-span-3">
+            <input
+              type="text"
+              placeholder="Search title or summary..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleApplyFilters()}
+              className="block w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            />
           </div>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/dashboard"
-              className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 hover:text-white"
+
+          {/* Severity */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted">
+              Severity
+            </label>
+            <select
+              value={severity}
+              onChange={(e) => setSeverity(e.target.value)}
+              className="block w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none"
             >
-              Dashboard
-            </Link>
-            <Link
-              href="/org/members"
-              className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 hover:text-white"
+              <option value="all">All</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
+            </select>
+          </div>
+
+          {/* Status */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted">
+              Status
+            </label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="block w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none"
             >
-              Members
-            </Link>
-            <Link
-              href="/org"
-              className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 hover:text-white"
+              <option value="all">All</option>
+              <option value="open">Open</option>
+              <option value="investigating">Investigating</option>
+              <option value="contained">Contained</option>
+              <option value="eradicated">Eradicated</option>
+              <option value="closed">Closed</option>
+            </select>
+          </div>
+
+          {/* Owner */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted">
+              Owner
+            </label>
+            <select
+              value={owner}
+              onChange={(e) => setOwner(e.target.value as "any" | "me")}
+              className="block w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none"
             >
-              Organizations
-            </Link>
-            {myRole && myRole !== "viewer" && (
-              <Link
-                href="/incidents/new"
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500"
-              >
-                Create Incident
-              </Link>
-            )}
-            <Link
-              href="/profile"
-              className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 hover:text-white"
+              <option value="any">Anyone</option>
+              <option value="me">My Incidents</option>
+            </select>
+          </div>
+
+          {/* Sort */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted">
+              Sort
+            </label>
+            <select
+              value={sort}
+              onChange={(e) =>
+                setSort(e.target.value as IncidentFilterParams["sort"])
+              }
+              className="block w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none"
             >
-              Profile
-            </Link>
+              <option value="created_desc">Newest First</option>
+              <option value="updated_desc">Recently Updated</option>
+              <option value="severity_desc">Severity (High to Low)</option>
+            </select>
+          </div>
+
+          {/* Buttons */}
+          <div className="flex items-end gap-2">
             <button
-              onClick={handleSignOut}
-              className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 hover:text-white"
+              onClick={handleApplyFilters}
+              disabled={searching}
+              className="rounded-xl bg-foreground px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
             >
-              Sign Out
+              {searching ? "Searching..." : "Apply"}
+            </button>
+            <button
+              onClick={handleReset}
+              className="rounded-xl border border-border px-4 py-2.5 text-sm font-medium text-muted transition hover:bg-background hover:text-foreground"
+            >
+              Reset
             </button>
           </div>
         </div>
-
-        {/* Filters */}
-        <div className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {/* Search */}
-            <div className="sm:col-span-2 lg:col-span-3">
-              <input
-                type="text"
-                placeholder="Search title or summary…"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleApplyFilters()}
-                className="block w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
-            </div>
-
-            {/* Severity */}
-            <div>
-              <label className="mb-1 block text-xs font-medium text-zinc-400">
-                Severity
-              </label>
-              <select
-                value={severity}
-                onChange={(e) => setSeverity(e.target.value)}
-                className="block w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none"
-              >
-                <option value="all">All</option>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
-              </select>
-            </div>
-
-            {/* Status */}
-            <div>
-              <label className="mb-1 block text-xs font-medium text-zinc-400">
-                Status
-              </label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="block w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none"
-              >
-                <option value="all">All</option>
-                <option value="open">Open</option>
-                <option value="investigating">Investigating</option>
-                <option value="contained">Contained</option>
-                <option value="eradicated">Eradicated</option>
-                <option value="closed">Closed</option>
-              </select>
-            </div>
-
-            {/* Owner */}
-            <div>
-              <label className="mb-1 block text-xs font-medium text-zinc-400">
-                Owner
-              </label>
-              <select
-                value={owner}
-                onChange={(e) => setOwner(e.target.value as "any" | "me")}
-                className="block w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none"
-              >
-                <option value="any">Anyone</option>
-                <option value="me">My Incidents</option>
-              </select>
-            </div>
-
-            {/* Sort */}
-            <div>
-              <label className="mb-1 block text-xs font-medium text-zinc-400">
-                Sort
-              </label>
-              <select
-                value={sort}
-                onChange={(e) =>
-                  setSort(e.target.value as IncidentFilterParams["sort"])
-                }
-                className="block w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none"
-              >
-                <option value="created_desc">Newest First</option>
-                <option value="updated_desc">Recently Updated</option>
-                <option value="severity_desc">Severity (High→Low)</option>
-              </select>
-            </div>
-
-            {/* Buttons */}
-            <div className="flex items-end gap-2">
-              <button
-                onClick={handleApplyFilters}
-                disabled={searching}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-50"
-              >
-                {searching ? "Searching…" : "Apply"}
-              </button>
-              <button
-                onClick={handleReset}
-                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 hover:text-white"
-              >
-                Reset
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Error */}
-        {error && (
-          <div className="mb-6 rounded-lg bg-red-900/50 border border-red-700 px-4 py-3 text-sm text-red-300">
-            {error}
-          </div>
-        )}
-
-        {/* Incidents List */}
-        {incidents.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-zinc-700 py-16 text-center">
-            <p className="text-zinc-500">
-              No incidents found. Try adjusting your filters.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {incidents.map((incident) => (
-              <Link
-                key={incident.id}
-                href={`/incidents/${incident.id}`}
-                className="block rounded-lg border border-zinc-800 bg-zinc-900 px-5 py-4 transition hover:border-zinc-600"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1">
-                    <h2 className="text-base font-semibold text-white truncate">
-                      {incident.title}
-                    </h2>
-                    <p className="mt-1 text-xs text-zinc-500">
-                      {new Date(incident.created_at).toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span
-                      className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-medium ${
-                        severityColors[incident.severity] ||
-                        "bg-zinc-800 text-zinc-400 border-zinc-700"
-                      }`}
-                    >
-                      {incident.severity}
-                    </span>
-                    <span
-                      className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        statusColors[incident.status] ||
-                        "bg-zinc-800 text-zinc-400"
-                      }`}
-                    >
-                      {incident.status}
-                    </span>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
       </div>
-    </div>
+
+      {/* Error */}
+      {error && (
+        <div className="mb-6 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
+          {error}
+        </div>
+      )}
+
+      {/* Incidents List */}
+      {incidents.length === 0 ? (
+        <div className="rounded-2xl bg-white shadow-sm border border-dashed border-border py-16 text-center">
+          <p className="text-muted">
+            No incidents found. Try adjusting your filters.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-2xl bg-white shadow-sm overflow-hidden">
+          {incidents.map((incident, idx) => (
+            <Link
+              key={incident.id}
+              href={`/incidents/${incident.id}`}
+              className={`block px-5 py-4 transition hover:bg-card-hover ${
+                idx !== 0 ? "border-t border-border" : ""
+              }`}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-sm font-semibold text-foreground truncate">
+                    {incident.title}
+                  </h2>
+                  <p className="mt-1 text-xs text-muted">
+                    {new Date(incident.created_at).toLocaleString()}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span
+                    className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      severityColors[incident.severity] ||
+                      "bg-zinc-100 text-zinc-500"
+                    }`}
+                  >
+                    {incident.severity}
+                  </span>
+                  <span
+                    className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      statusColors[incident.status] ||
+                      "bg-zinc-100 text-zinc-500"
+                    }`}
+                  >
+                    {incident.status}
+                  </span>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </AppShell>
   );
 }
 
 export default function IncidentsPage() {
   return (
     <React.Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center bg-zinc-950">
-        <div className="flex items-center gap-3 text-zinc-400">
-          <svg className="h-5 w-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-          Loading…
+      <AppShell title="Incidents" subtitle="Loading...">
+        <div className="space-y-3">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="rounded-2xl bg-white px-5 py-4 shadow-sm animate-pulse">
+              <div className="h-4 w-48 rounded bg-zinc-200" />
+              <div className="mt-2 h-3 w-32 rounded bg-zinc-100" />
+            </div>
+          ))}
         </div>
-      </div>
+      </AppShell>
     }>
       <IncidentsPageContent />
     </React.Suspense>

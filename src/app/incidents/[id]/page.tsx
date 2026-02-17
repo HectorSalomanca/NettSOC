@@ -9,6 +9,8 @@ import {
   updateIncident,
   deleteIncident,
   Incident,
+  getMttrStats,
+  MttrStats,
 } from "@/services/incidents";
 import {
   listTimeline,
@@ -41,27 +43,27 @@ const EVENT_TYPES = [
 ];
 
 const eventTypeColors: Record<string, string> = {
-  note: "bg-zinc-700 text-zinc-300",
-  status_change: "bg-indigo-900/50 text-indigo-300",
-  triage: "bg-yellow-900/50 text-yellow-300",
-  containment: "bg-blue-900/50 text-blue-300",
-  eradication: "bg-emerald-900/50 text-emerald-300",
-  recovery: "bg-purple-900/50 text-purple-300",
+  note: "bg-zinc-100 text-zinc-600",
+  status_change: "bg-indigo-50 text-indigo-600",
+  triage: "bg-amber-50 text-amber-600",
+  containment: "bg-blue-50 text-blue-600",
+  eradication: "bg-emerald-50 text-emerald-600",
+  recovery: "bg-purple-50 text-purple-600",
 };
 
 const severityColors: Record<string, string> = {
-  low: "bg-blue-900/50 text-blue-300 border-blue-700",
-  medium: "bg-yellow-900/50 text-yellow-300 border-yellow-700",
-  high: "bg-orange-900/50 text-orange-300 border-orange-700",
-  critical: "bg-red-900/50 text-red-300 border-red-700",
+  low: "bg-blue-50 text-blue-600",
+  medium: "bg-amber-50 text-amber-600",
+  high: "bg-orange-50 text-orange-600",
+  critical: "bg-red-50 text-red-600",
 };
 
 const statusColors: Record<string, string> = {
-  open: "bg-red-900/40 text-red-300",
-  investigating: "bg-yellow-900/40 text-yellow-300",
-  contained: "bg-blue-900/40 text-blue-300",
-  eradicated: "bg-emerald-900/40 text-emerald-300",
-  closed: "bg-zinc-800 text-zinc-400",
+  open: "bg-red-50 text-red-600",
+  investigating: "bg-amber-50 text-amber-600",
+  contained: "bg-blue-50 text-blue-600",
+  eradicated: "bg-emerald-50 text-emerald-600",
+  closed: "bg-zinc-100 text-zinc-500",
 };
 
 export default function IncidentDetailPage() {
@@ -110,6 +112,9 @@ export default function IncidentDetailPage() {
   const [newComment, setNewComment] = useState("");
   const [addingComment, setAddingComment] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
+
+  // MTTR state
+  const [mttr, setMttr] = useState<MttrStats | null>(null);
 
   const fetchEvidence = useCallback(async () => {
     setEvidenceLoading(true);
@@ -197,6 +202,9 @@ export default function IncidentDetailPage() {
         const commentsList = await listComments(id);
         setComments(commentsList);
         setCommentsLoading(false);
+
+        // Fetch MTTR stats (non-blocking)
+        getMttrStats().then(setMttr).catch(() => {});
       } catch (err: unknown) {
         setError(
           err instanceof Error ? err.message : "Failed to load incident"
@@ -378,8 +386,8 @@ export default function IncidentDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-950">
-        <div className="flex items-center gap-3 text-zinc-400">
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex items-center gap-3 text-muted">
           <svg
             className="h-5 w-5 animate-spin"
             xmlns="http://www.w3.org/2000/svg"
@@ -408,16 +416,16 @@ export default function IncidentDetailPage() {
 
   if (!incident) {
     return (
-      <div className="min-h-screen bg-zinc-950 px-4 py-8">
+      <div className="min-h-screen bg-background px-4 py-8">
         <div className="mx-auto max-w-2xl">
           <Link
             href="/incidents"
-            className="text-sm text-zinc-400 transition hover:text-white"
+            className="text-sm text-muted transition hover:text-foreground"
           >
             ← Back to Incidents
           </Link>
-          <div className="mt-8 rounded-lg border border-zinc-800 bg-zinc-900 px-6 py-12 text-center">
-            <p className="text-zinc-400">Incident not found.</p>
+          <div className="mt-8 rounded-2xl bg-white shadow-sm px-6 py-12 text-center">
+            <p className="text-muted">Incident not found.</p>
           </div>
         </div>
       </div>
@@ -425,13 +433,13 @@ export default function IncidentDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-4 py-8">
+    <div className="min-h-screen bg-background px-4 py-8">
       <div className="mx-auto max-w-2xl">
         {/* Header */}
         <div className="mb-6">
           <Link
             href="/incidents"
-            className="text-sm text-zinc-400 transition hover:text-white"
+            className="text-sm text-muted transition hover:text-foreground"
           >
             ← Back to Incidents
           </Link>
@@ -439,24 +447,24 @@ export default function IncidentDetailPage() {
 
         {/* Title + badges */}
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-white">{incident.title}</h1>
+          <h1 className="text-2xl font-bold text-foreground">{incident.title}</h1>
           <div className="mt-2 flex items-center gap-3">
             <span
               className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-medium ${
                 severityColors[incident.severity] ||
-                "bg-zinc-800 text-zinc-400 border-zinc-700"
+                "bg-zinc-100 text-zinc-500"
               }`}
             >
               {incident.severity}
             </span>
             <span
               className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                statusColors[incident.status] || "bg-zinc-800 text-zinc-400"
+                statusColors[incident.status] || "bg-zinc-100 text-zinc-500"
               }`}
             >
               {incident.status}
             </span>
-            <span className="text-xs text-zinc-500">
+            <span className="text-xs text-muted">
               Created {new Date(incident.created_at).toLocaleString()}
             </span>
           </div>
@@ -464,23 +472,97 @@ export default function IncidentDetailPage() {
 
         {/* Messages */}
         {error && (
-          <div className="mb-6 rounded-lg bg-red-900/50 border border-red-700 px-4 py-3 text-sm text-red-300">
+          <div className="mb-6 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
             {error}
           </div>
         )}
         {successMsg && (
-          <div className="mb-6 rounded-lg bg-green-900/50 border border-green-700 px-4 py-3 text-sm text-green-300">
+          <div className="mb-6 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-600">
             {successMsg}
           </div>
         )}
 
+        {/* Resolution Metrics */}
+        <div className="mb-6 rounded-2xl bg-white shadow-sm p-5">
+          <h2 className="text-sm font-semibold text-foreground mb-3">Resolution Metrics</h2>
+          <div className="grid grid-cols-3 gap-4">
+            {/* This incident */}
+            <div>
+              <p className="text-xs text-muted mb-0.5">This Incident</p>
+              <p className="text-base font-bold text-foreground">
+                {(() => {
+                  if (incident.closed_at) {
+                    const ms = new Date(incident.closed_at).getTime() - new Date(incident.created_at).getTime();
+                    const hours = Math.floor(ms / (1000 * 60 * 60));
+                    const mins = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+                    return `${hours}h ${mins}m`;
+                  }
+                  const ms = Date.now() - new Date(incident.created_at).getTime();
+                  const hours = Math.floor(ms / (1000 * 60 * 60));
+                  const mins = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+                  return `${hours}h ${mins}m`;
+                })()}
+              </p>
+              <p className="text-xs text-muted">
+                {incident.closed_at ? "Resolved in" : "Open for"}
+              </p>
+            </div>
+            {/* Median MTTR */}
+            <div>
+              <p className="text-xs text-muted mb-0.5">Median MTTR</p>
+              <p className="text-base font-bold text-foreground">
+                {mttr?.medianHours != null ? `${mttr.medianHours}h` : "—"}
+              </p>
+              <p className="text-xs text-muted">Last 30 days</p>
+            </div>
+            {/* p90 MTTR */}
+            <div>
+              <p className="text-xs text-muted mb-0.5">p90 MTTR</p>
+              <p className="text-base font-bold text-foreground">
+                {mttr?.p90Hours != null ? `${mttr.p90Hours}h` : "—"}
+              </p>
+              <p className="text-xs text-muted">{mttr?.count ?? 0} incidents</p>
+            </div>
+          </div>
+          {/* Tiny comparison bar: this incident vs median */}
+          {mttr?.medianHours != null && (
+            <div className="mt-3">
+              <div className="flex items-center gap-2 text-xs text-muted mb-1">
+                <span>This incident vs median</span>
+              </div>
+              <div className="flex h-2 w-full overflow-hidden rounded-full bg-zinc-100">
+                {(() => {
+                  const incMs = incident.closed_at
+                    ? new Date(incident.closed_at).getTime() - new Date(incident.created_at).getTime()
+                    : Date.now() - new Date(incident.created_at).getTime();
+                  const incHours = incMs / (1000 * 60 * 60);
+                  const medianH = mttr.medianHours!;
+                  const maxH = Math.max(incHours, medianH) * 1.2;
+                  const incPct = Math.min((incHours / maxH) * 100, 100);
+                  const isOver = incHours > medianH;
+                  return (
+                    <div
+                      className={`h-full rounded-full transition-all ${isOver ? "bg-red-400" : "bg-emerald-400"}`}
+                      style={{ width: `${incPct}%` }}
+                    />
+                  );
+                })()}
+              </div>
+              <div className="flex justify-between text-xs text-muted mt-1">
+                <span>0h</span>
+                <span>Median: {mttr.medianHours}h</span>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Edit form */}
-        <div className="space-y-5 rounded-lg border border-zinc-800 bg-zinc-900 p-6">
+        <div className="space-y-5 rounded-2xl bg-white shadow-sm p-6">
           {/* Summary */}
           <div>
             <label
               htmlFor="summary"
-              className="block text-sm font-medium text-zinc-300"
+              className="block text-sm font-medium text-foreground"
             >
               Summary (Markdown supported)
             </label>
@@ -490,12 +572,12 @@ export default function IncidentDetailPage() {
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
               placeholder="Describe the incident... You can use **bold**, *italic*, and other markdown formatting."
-              className="mt-1 block w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-white placeholder-zinc-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-y"
+              className="mt-1 block w-full rounded-xl border border-border bg-background px-3 py-2 text-foreground placeholder-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent resize-y"
             />
             {summary && (
-              <div className="mt-2 rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2">
-                <p className="text-xs text-zinc-500 mb-1">Preview:</p>
-                <div className="prose prose-invert prose-sm max-w-none">
+              <div className="mt-2 rounded-xl border border-border bg-background px-3 py-2">
+                <p className="text-xs text-muted mb-1">Preview:</p>
+                <div className="prose prose-sm max-w-none">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {summary}
                   </ReactMarkdown>
@@ -509,7 +591,7 @@ export default function IncidentDetailPage() {
             <div>
               <label
                 htmlFor="severity"
-                className="block text-sm font-medium text-zinc-300"
+                className="block text-sm font-medium text-foreground"
               >
                 Severity
               </label>
@@ -517,7 +599,7 @@ export default function IncidentDetailPage() {
                 id="severity"
                 value={severity}
                 onChange={(e) => setSeverity(e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="mt-1 block w-full rounded-xl border border-border bg-background px-3 py-2 text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
               >
                 {SEVERITIES.map((s) => (
                   <option key={s} value={s}>
@@ -529,7 +611,7 @@ export default function IncidentDetailPage() {
             <div>
               <label
                 htmlFor="status"
-                className="block text-sm font-medium text-zinc-300"
+                className="block text-sm font-medium text-foreground"
               >
                 Status
               </label>
@@ -537,7 +619,7 @@ export default function IncidentDetailPage() {
                 id="status"
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="mt-1 block w-full rounded-xl border border-border bg-background px-3 py-2 text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
               >
                 {STATUSES.map((s) => (
                   <option key={s} value={s}>
@@ -549,7 +631,7 @@ export default function IncidentDetailPage() {
             <div>
               <label
                 htmlFor="assignedTo"
-                className="block text-sm font-medium text-zinc-300"
+                className="block text-sm font-medium text-foreground"
               >
                 Assigned To
               </label>
@@ -558,7 +640,7 @@ export default function IncidentDetailPage() {
                 value={assignedTo}
                 onChange={(e) => setAssignedTo(e.target.value)}
                 disabled={myRole === "viewer"}
-                className="mt-1 block w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
+                className="mt-1 block w-full rounded-xl border border-border bg-background px-3 py-2 text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
               >
                 <option value="">Unassigned</option>
                 {orgMembers.map((member) => (
@@ -571,7 +653,7 @@ export default function IncidentDetailPage() {
             <div>
               <label
                 htmlFor="dueAt"
-                className="block text-sm font-medium text-zinc-300"
+                className="block text-sm font-medium text-foreground"
               >
                 SLA Due Date
               </label>
@@ -581,10 +663,10 @@ export default function IncidentDetailPage() {
                 value={dueAt}
                 onChange={(e) => setDueAt(e.target.value)}
                 disabled={myRole === "viewer"}
-                className="mt-1 block w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
+                className="mt-1 block w-full rounded-xl border border-border bg-background px-3 py-2 text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
               />
               {incident?.due_at && (
-                <p className="mt-1 text-xs text-zinc-400">
+                <p className="mt-1 text-xs text-muted">
                   {(() => {
                     const now = new Date();
                     const due = new Date(incident.due_at);
@@ -624,7 +706,7 @@ export default function IncidentDetailPage() {
                 <button
                   onClick={handleDelete}
                   disabled={deleting}
-                  className="rounded-lg border border-red-800 px-4 py-2 text-sm font-medium text-red-400 transition hover:bg-red-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-500 transition hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {deleting ? "Deleting…" : "Delete Incident"}
                 </button>
@@ -650,7 +732,7 @@ export default function IncidentDetailPage() {
                     }
                   }}
                   disabled={saving}
-                  className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Mark as Completed
                 </button>
@@ -660,7 +742,7 @@ export default function IncidentDetailPage() {
               <button
                 onClick={handleUpdate}
                 disabled={saving}
-                className="rounded-lg bg-indigo-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="rounded-xl bg-foreground px-6 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {saving ? "Saving…" : "Save Changes"}
               </button>
@@ -670,16 +752,16 @@ export default function IncidentDetailPage() {
 
         {/* Timeline Section */}
         <div className="mt-8">
-          <h2 className="text-lg font-semibold text-white mb-4">Timeline</h2>
+          <h2 className="text-lg font-semibold text-foreground mb-4">Timeline</h2>
 
           {/* Add Entry Form */}
           {myRole && myRole !== "viewer" && (
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-5 mb-6">
+            <div className="rounded-2xl bg-white shadow-sm p-5 mb-6">
             <div className="space-y-3">
               <div>
                 <label
                   htmlFor="eventType"
-                  className="block text-sm font-medium text-zinc-300 mb-1"
+                  className="block text-sm font-medium text-foreground mb-1"
                 >
                   Event Type
                 </label>
@@ -687,7 +769,7 @@ export default function IncidentDetailPage() {
                   id="eventType"
                   value={newEventType}
                   onChange={(e) => setNewEventType(e.target.value)}
-                  className="block w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className="block w-full rounded-xl border border-border bg-background px-3 py-2 text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
                 >
                   {EVENT_TYPES.map((t) => (
                     <option key={t} value={t}>
@@ -699,7 +781,7 @@ export default function IncidentDetailPage() {
               <div>
                 <label
                   htmlFor="timelineMessage"
-                  className="block text-sm font-medium text-zinc-300 mb-1"
+                  className="block text-sm font-medium text-foreground mb-1"
                 >
                   Message
                 </label>
@@ -709,13 +791,13 @@ export default function IncidentDetailPage() {
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   placeholder="Describe what happened or what action was taken…"
-                  className="block w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-white placeholder-zinc-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-y"
+                  className="block w-full rounded-xl border border-border bg-background px-3 py-2 text-foreground placeholder-zinc-500 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent resize-y"
                 />
               </div>
               <button
                 onClick={handleAddEntry}
                 disabled={addingEntry || !newMessage.trim()}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="rounded-xl bg-foreground px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {addingEntry ? "Adding…" : "Add Entry"}
               </button>
@@ -725,14 +807,14 @@ export default function IncidentDetailPage() {
 
           {/* Timeline Error */}
           {timelineError && (
-            <div className="mb-4 rounded-lg bg-red-900/50 border border-red-700 px-4 py-3 text-sm text-red-300">
+            <div className="mb-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
               {timelineError}
             </div>
           )}
 
           {/* Timeline List */}
           {timelineLoading ? (
-            <div className="flex items-center gap-3 text-zinc-400 py-6">
+            <div className="flex items-center gap-3 text-muted py-6">
               <svg
                 className="h-4 w-4 animate-spin"
                 xmlns="http://www.w3.org/2000/svg"
@@ -756,32 +838,32 @@ export default function IncidentDetailPage() {
               <span className="text-sm">Loading timeline…</span>
             </div>
           ) : timeline.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-zinc-700 py-10 text-center">
-              <p className="text-zinc-500 text-sm">No timeline entries yet.</p>
+            <div className="rounded-xl border border-dashed border-border py-10 text-center">
+              <p className="text-muted text-sm">No timeline entries yet.</p>
             </div>
           ) : (
             <div className="space-y-3">
               {timeline.map((entry) => (
                 <div
                   key={entry.id}
-                  className="rounded-lg border border-zinc-800 bg-zinc-900 px-5 py-4"
+                  className="rounded-xl bg-white shadow-sm px-5 py-4"
                 >
                   <div className="flex items-center gap-3 mb-2">
                     <span
                       className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
                         eventTypeColors[entry.event_type] ||
-                        "bg-zinc-700 text-zinc-300"
+                        "bg-zinc-100 text-zinc-600"
                       }`}
                     >
                       {entry.event_type.replace("_", " ")}
                     </span>
-                    <span className="text-xs text-zinc-500">
+                    <span className="text-xs text-muted">
                       {profileMap[entry.created_by]?.display_name || entry.created_by?.slice(0, 8) + "…"}
                       {" · "}
                       {new Date(entry.created_at).toLocaleString()}
                     </span>
                   </div>
-                  <p className="text-sm text-zinc-200 whitespace-pre-wrap">
+                  <p className="text-sm text-foreground whitespace-pre-wrap">
                     {entry.message}
                   </p>
                 </div>
@@ -792,16 +874,16 @@ export default function IncidentDetailPage() {
 
         {/* Evidence Section */}
         <div className="mt-8">
-          <h2 className="text-lg font-semibold text-white mb-4">Evidence</h2>
+          <h2 className="text-lg font-semibold text-foreground mb-4">Evidence</h2>
 
           {/* Upload Form */}
           {myRole && myRole !== "viewer" && (
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-5 mb-6">
+            <div className="rounded-2xl bg-white shadow-sm p-5 mb-6">
             <div className="space-y-3">
               <div>
                 <label
                   htmlFor="evidenceFile"
-                  className="block text-sm font-medium text-zinc-300 mb-1"
+                  className="block text-sm font-medium text-foreground mb-1"
                 >
                   Select File
                 </label>
@@ -811,13 +893,13 @@ export default function IncidentDetailPage() {
                   onChange={(e) =>
                     setSelectedFile(e.target.files?.[0] || null)
                   }
-                  className="block w-full text-sm text-zinc-400 file:mr-4 file:rounded-lg file:border-0 file:bg-zinc-700 file:px-4 file:py-2 file:text-sm file:font-medium file:text-zinc-200 hover:file:bg-zinc-600 file:cursor-pointer file:transition"
+                  className="block w-full text-sm text-muted file:mr-4 file:rounded-xl file:border-0 file:bg-foreground file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:opacity-90 file:cursor-pointer file:transition"
                 />
               </div>
               <button
                 onClick={handleUpload}
                 disabled={uploading || !selectedFile}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="rounded-xl bg-foreground px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {uploading ? "Uploading…" : "Upload Evidence"}
               </button>
@@ -827,14 +909,14 @@ export default function IncidentDetailPage() {
 
           {/* Evidence Error */}
           {evidenceError && (
-            <div className="mb-4 rounded-lg bg-red-900/50 border border-red-700 px-4 py-3 text-sm text-red-300">
+            <div className="mb-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
               {evidenceError}
             </div>
           )}
 
           {/* Evidence List */}
           {evidenceLoading ? (
-            <div className="flex items-center gap-3 text-zinc-400 py-6">
+            <div className="flex items-center gap-3 text-muted py-6">
               <svg
                 className="h-4 w-4 animate-spin"
                 xmlns="http://www.w3.org/2000/svg"
@@ -858,21 +940,21 @@ export default function IncidentDetailPage() {
               <span className="text-sm">Loading evidence…</span>
             </div>
           ) : evidence.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-zinc-700 py-10 text-center">
-              <p className="text-zinc-500 text-sm">No evidence uploaded yet.</p>
+            <div className="rounded-xl border border-dashed border-border py-10 text-center">
+              <p className="text-muted text-sm">No evidence uploaded yet.</p>
             </div>
           ) : (
             <div className="space-y-3">
               {evidence.map((rec) => (
                 <div
                   key={rec.id}
-                  className="flex items-center justify-between gap-4 rounded-lg border border-zinc-800 bg-zinc-900 px-5 py-4"
+                  className="flex items-center justify-between gap-4 rounded-xl bg-white shadow-sm px-5 py-4"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-white truncate">
+                    <p className="text-sm font-medium text-foreground truncate">
                       {rec.file_name}
                     </p>
-                    <p className="text-xs text-zinc-500 mt-0.5">
+                    <p className="text-xs text-muted mt-0.5">
                       {rec.mime_type || "unknown type"}
                       {rec.size_bytes
                         ? ` · ${(rec.size_bytes / 1024).toFixed(1)} KB`
@@ -887,13 +969,13 @@ export default function IncidentDetailPage() {
                     <button
                       onClick={() => handleOpenEvidence(rec)}
                       disabled={openingId === rec.id}
-                      className="rounded-lg bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-200 transition hover:bg-zinc-600 disabled:opacity-50"
+                      className="rounded-xl bg-foreground px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
                     >
                       {openingId === rec.id ? "Opening…" : "Open"}
                     </button>
                     <button
                       onClick={() => handleCopyLink(rec)}
-                      className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+                      className="rounded-xl border border-border px-3 py-1.5 text-xs font-medium text-muted transition hover:bg-background hover:text-foreground"
                     >
                       Copy Link
                     </button>
@@ -906,16 +988,16 @@ export default function IncidentDetailPage() {
 
         {/* Comments Section */}
         <div className="mt-8">
-          <h2 className="text-lg font-semibold text-white mb-4">Discussion</h2>
+          <h2 className="text-lg font-semibold text-foreground mb-4">Discussion</h2>
 
           {/* Add Comment Form */}
           {myRole && myRole !== "viewer" && (
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-5 mb-6">
+            <div className="rounded-2xl bg-white shadow-sm p-5 mb-6">
               <div className="space-y-3">
                 <div>
                   <label
                     htmlFor="commentContent"
-                    className="block text-sm font-medium text-zinc-300 mb-1"
+                    className="block text-sm font-medium text-foreground mb-1"
                   >
                     Add Comment (Markdown supported)
                   </label>
@@ -925,13 +1007,13 @@ export default function IncidentDetailPage() {
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
                     placeholder="Write your comment here... You can use **bold**, *italic*, and other markdown formatting."
-                    className="block w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-white placeholder-zinc-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-y"
+                    className="block w-full rounded-xl border border-border bg-background px-3 py-2 text-foreground placeholder-zinc-500 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent resize-y"
                   />
                 </div>
                 <button
                   onClick={handleAddComment}
                   disabled={addingComment || !newComment.trim()}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-xl bg-foreground px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {addingComment ? "Adding…" : "Add Comment"}
                 </button>
@@ -941,14 +1023,14 @@ export default function IncidentDetailPage() {
 
           {/* Comments Error */}
           {commentsError && (
-            <div className="mb-4 rounded-lg bg-red-900/50 border border-red-700 px-4 py-3 text-sm text-red-300">
+            <div className="mb-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
               {commentsError}
             </div>
           )}
 
           {/* Comments List */}
           {commentsLoading ? (
-            <div className="flex items-center gap-3 text-zinc-400 py-6">
+            <div className="flex items-center gap-3 text-muted py-6">
               <svg
                 className="h-4 w-4 animate-spin"
                 xmlns="http://www.w3.org/2000/svg"
@@ -972,19 +1054,19 @@ export default function IncidentDetailPage() {
               <span className="text-sm">Loading comments…</span>
             </div>
           ) : comments.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-zinc-700 py-10 text-center">
-              <p className="text-zinc-500 text-sm">No comments yet. Start the discussion!</p>
+            <div className="rounded-xl border border-dashed border-border py-10 text-center">
+              <p className="text-muted text-sm">No comments yet. Start the discussion!</p>
             </div>
           ) : (
             <div className="space-y-4">
               {comments.map((comment) => (
                 <div
                   key={comment.id}
-                  className="rounded-lg border border-zinc-800 bg-zinc-900 px-5 py-4"
+                  className="rounded-xl bg-white shadow-sm px-5 py-4"
                 >
                   <div className="flex items-start justify-between gap-4 mb-3">
-                    <div className="flex items-center gap-2 text-xs text-zinc-500">
-                      <span className="font-medium text-zinc-300">
+                    <div className="flex items-center gap-2 text-xs text-muted">
+                      <span className="font-medium text-foreground">
                         {profileMap[comment.user_id]?.display_name || comment.user_id.slice(0, 8) + "…"}
                       </span>
                       <span>·</span>
@@ -1000,13 +1082,13 @@ export default function IncidentDetailPage() {
                       <button
                         onClick={() => handleDeleteComment(comment.id)}
                         disabled={deletingCommentId === comment.id}
-                        className="text-xs text-red-400 hover:text-red-300 transition disabled:opacity-50"
+                        className="text-xs text-red-500 hover:text-red-400 transition disabled:opacity-50"
                       >
                         {deletingCommentId === comment.id ? "Deleting…" : "Delete"}
                       </button>
                     )}
                   </div>
-                  <div className="prose prose-invert prose-sm max-w-none">
+                  <div className="prose prose-sm max-w-none">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {comment.content}
                     </ReactMarkdown>
