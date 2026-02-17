@@ -11,6 +11,7 @@ import {
 } from "@/services/incidents";
 import { getActiveOrgDetails, Organization } from "@/services/org";
 import { getMyRoleInActiveOrg } from "@/services/members";
+import { bulkAddTagToIncidents, listTags, getOrCreateTag, IncidentTag } from "@/services/templates";
 import AppShell from "@/components/AppShell";
 
 const severityColors: Record<string, string> = {
@@ -44,6 +45,13 @@ function IncidentsPageContent() {
   const [owner, setOwner] = useState<"any" | "me">("any");
   const [sort, setSort] = useState<IncidentFilterParams["sort"]>("created_desc");
   const riskParam = searchParams.get("risk");
+
+  // Bulk operations state
+  const [selectedIncidents, setSelectedIncidents] = useState<Set<string>>(new Set());
+  const [showBulkActions, setShowBulkActions] = useState(false);
+  const [bulkTagName, setBulkTagName] = useState("");
+  const [applyingBulkTag, setApplyingBulkTag] = useState(false);
+  const [availableTags, setAvailableTags] = useState<IncidentTag[]>([]);
 
   const fetchIncidents = useCallback(
     async (params: IncidentFilterParams = {}, riskFilter?: string | null) => {
@@ -97,6 +105,9 @@ function IncidentsPageContent() {
         const role = await getMyRoleInActiveOrg();
         setMyRole(role);
         
+        // Fetch tags for bulk operations
+        listTags().then(setAvailableTags).catch(() => {});
+        
         // Auto-apply filters from URL params
         await fetchIncidents(
           { 
@@ -129,6 +140,41 @@ function IncidentsPageContent() {
     setSort("created_desc");
     setError(null);
     fetchIncidents();
+  }
+
+  function toggleIncidentSelection(incidentId: string) {
+    const newSelected = new Set(selectedIncidents);
+    if (newSelected.has(incidentId)) {
+      newSelected.delete(incidentId);
+    } else {
+      newSelected.add(incidentId);
+    }
+    setSelectedIncidents(newSelected);
+  }
+
+  function toggleSelectAll() {
+    if (selectedIncidents.size === incidents.length) {
+      setSelectedIncidents(new Set());
+    } else {
+      setSelectedIncidents(new Set(incidents.map(i => i.id)));
+    }
+  }
+
+  async function handleBulkAddTag() {
+    if (!bulkTagName.trim() || selectedIncidents.size === 0) return;
+    setApplyingBulkTag(true);
+    setError(null);
+    try {
+      const tag = await getOrCreateTag(bulkTagName.trim());
+      await bulkAddTagToIncidents({ incidentIds: Array.from(selectedIncidents), tagId: tag.id });
+      setBulkTagName("");
+      setSelectedIncidents(new Set());
+      setShowBulkActions(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to apply bulk tag");
+    } finally {
+      setApplyingBulkTag(false);
+    }
   }
 
   if (loading) {
@@ -280,6 +326,55 @@ function IncidentsPageContent() {
         </div>
       )}
 
+      {/* Bulk Operations */}
+      {myRole && myRole !== "viewer" && incidents.length > 0 && (
+        <div className="mb-6 rounded-2xl bg-white shadow-sm p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={selectedIncidents.size === incidents.length && incidents.length > 0}
+                onChange={toggleSelectAll}
+                className="h-4 w-4 rounded border-border text-accent focus:ring-accent"
+              />
+              <span className="text-sm font-medium text-foreground">
+                {selectedIncidents.size} selected
+              </span>
+            </div>
+            {selectedIncidents.size > 0 && (
+              <button
+                onClick={() => setShowBulkActions(!showBulkActions)}
+                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
+              >
+                {showBulkActions ? "Cancel" : "Bulk Actions"}
+              </button>
+            )}
+          </div>
+
+          {showBulkActions && selectedIncidents.size > 0 && (
+            <div className="rounded-xl border border-border bg-background p-4">
+              <p className="text-sm font-medium text-foreground mb-3">Add Tag to Selected Incidents</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={bulkTagName}
+                  onChange={(e) => setBulkTagName(e.target.value)}
+                  placeholder="Tag name (e.g. reviewed, escalated)"
+                  className="flex-1 rounded-lg border border-border bg-white px-3 py-2 text-sm text-foreground placeholder-muted focus:border-accent focus:outline-none"
+                />
+                <button
+                  onClick={handleBulkAddTag}
+                  disabled={applyingBulkTag || !bulkTagName.trim()}
+                  className="rounded-lg bg-foreground px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                >
+                  {applyingBulkTag ? "Applying..." : "Apply Tag"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Incidents List */}
       {incidents.length === 0 ? (
         <div className="rounded-2xl bg-white shadow-sm border border-dashed border-border py-16 text-center">
@@ -290,42 +385,58 @@ function IncidentsPageContent() {
       ) : (
         <div className="rounded-2xl bg-white shadow-sm overflow-hidden">
           {incidents.map((incident, idx) => (
-            <Link
+            <div
               key={incident.id}
-              href={`/incidents/${incident.id}`}
-              className={`block px-5 py-4 transition hover:bg-card-hover ${
+              className={`flex items-center gap-3 px-5 py-4 transition hover:bg-card-hover ${
                 idx !== 0 ? "border-t border-border" : ""
               }`}
             >
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-sm font-semibold text-foreground truncate">
-                    {incident.title}
-                  </h2>
-                  <p className="mt-1 text-xs text-muted">
-                    {new Date(incident.created_at).toLocaleString()}
-                  </p>
+              {myRole && myRole !== "viewer" && (
+                <input
+                  type="checkbox"
+                  checked={selectedIncidents.has(incident.id)}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    toggleIncidentSelection(incident.id);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-4 w-4 rounded border-border text-accent focus:ring-accent"
+                />
+              )}
+              <Link
+                href={`/incidents/${incident.id}`}
+                className="flex-1 min-w-0"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-sm font-semibold text-foreground truncate">
+                      {incident.title}
+                    </h2>
+                    <p className="mt-1 text-xs text-muted">
+                      {new Date(incident.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span
+                      className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        severityColors[incident.severity] ||
+                        "bg-zinc-100 text-zinc-500"
+                      }`}
+                    >
+                      {incident.severity}
+                    </span>
+                    <span
+                      className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        statusColors[incident.status] ||
+                        "bg-zinc-100 text-zinc-500"
+                      }`}
+                    >
+                      {incident.status}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <span
-                    className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      severityColors[incident.severity] ||
-                      "bg-zinc-100 text-zinc-500"
-                    }`}
-                  >
-                    {incident.severity}
-                  </span>
-                  <span
-                    className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      statusColors[incident.status] ||
-                      "bg-zinc-100 text-zinc-500"
-                    }`}
-                  >
-                    {incident.status}
-                  </span>
-                </div>
-              </div>
-            </Link>
+              </Link>
+            </div>
           ))}
         </div>
       )}

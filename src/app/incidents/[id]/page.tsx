@@ -27,6 +27,9 @@ import { getProfilesByIds, Profile } from "@/services/profiles";
 import { getMyRoleInActiveOrg, listMembers, MemberRecord } from "@/services/members";
 import { listComments, createComment, deleteComment, Comment } from "@/services/comments";
 import { notifyIncidentAssignment } from "@/services/notifications";
+import { getIncidentPlaybooks, assignPlaybookToIncident, completePlaybookTask, uncompletePlaybookTask, listPlaybooks, IncidentPlaybookWithDetails, Playbook } from "@/services/playbooks";
+import { getIncidentIOCs, linkIOCToIncident, unlinkIOCFromIncident, listIOCs, IOC } from "@/services/iocs";
+import { getIncidentTags, addTagToIncident, removeTagFromIncident, listTags, getOrCreateTag, IncidentTag } from "@/services/templates";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -115,6 +118,27 @@ export default function IncidentDetailPage() {
 
   // MTTR state
   const [mttr, setMttr] = useState<MttrStats | null>(null);
+
+  // Playbooks state
+  const [incidentPlaybooks, setIncidentPlaybooks] = useState<IncidentPlaybookWithDetails[]>([]);
+  const [availablePlaybooks, setAvailablePlaybooks] = useState<Playbook[]>([]);
+  const [showPlaybookAssign, setShowPlaybookAssign] = useState(false);
+  const [selectedPlaybookId, setSelectedPlaybookId] = useState("");
+  const [assigningPlaybook, setAssigningPlaybook] = useState(false);
+
+  // IOCs state
+  const [incidentIOCs, setIncidentIOCs] = useState<IOC[]>([]);
+  const [availableIOCs, setAvailableIOCs] = useState<IOC[]>([]);
+  const [showIOCLink, setShowIOCLink] = useState(false);
+  const [selectedIOCId, setSelectedIOCId] = useState("");
+  const [linkingIOC, setLinkingIOC] = useState(false);
+
+  // Tags state
+  const [incidentTags, setIncidentTags] = useState<IncidentTag[]>([]);
+  const [availableTags, setAvailableTags] = useState<IncidentTag[]>([]);
+  const [showTagAdd, setShowTagAdd] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
+  const [addingTag, setAddingTag] = useState(false);
 
   const fetchEvidence = useCallback(async () => {
     setEvidenceLoading(true);
@@ -205,6 +229,14 @@ export default function IncidentDetailPage() {
 
         // Fetch MTTR stats (non-blocking)
         getMttrStats().then(setMttr).catch(() => {});
+
+        // Fetch playbooks, IOCs, and tags (non-blocking)
+        getIncidentPlaybooks(id).then(setIncidentPlaybooks).catch(() => {});
+        listPlaybooks().then(setAvailablePlaybooks).catch(() => {});
+        getIncidentIOCs(id).then(setIncidentIOCs).catch(() => {});
+        listIOCs().then(setAvailableIOCs).catch(() => {});
+        getIncidentTags(id).then(setIncidentTags).catch(() => {});
+        listTags().then(setAvailableTags).catch(() => {});
       } catch (err: unknown) {
         setError(
           err instanceof Error ? err.message : "Failed to load incident"
@@ -388,6 +420,92 @@ export default function IncidentDetailPage() {
     }
   }
 
+  // Playbook handlers
+  async function handleAssignPlaybook() {
+    if (!selectedPlaybookId) return;
+    setAssigningPlaybook(true);
+    try {
+      await assignPlaybookToIncident({ incidentId: id, playbookId: selectedPlaybookId, incidentTitle: incident?.title });
+      const updated = await getIncidentPlaybooks(id);
+      setIncidentPlaybooks(updated);
+      setSelectedPlaybookId("");
+      setShowPlaybookAssign(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to assign playbook");
+    } finally {
+      setAssigningPlaybook(false);
+    }
+  }
+
+  async function handleToggleTask(incidentPlaybookId: string, taskId: string, isCompleted: boolean) {
+    try {
+      if (isCompleted) {
+        await uncompletePlaybookTask(incidentPlaybookId, taskId);
+      } else {
+        await completePlaybookTask({ incidentPlaybookId, taskId, incidentId: id, incidentTitle: incident?.title });
+      }
+      const updated = await getIncidentPlaybooks(id);
+      setIncidentPlaybooks(updated);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to update task");
+    }
+  }
+
+  // IOC handlers
+  async function handleLinkIOC() {
+    if (!selectedIOCId) return;
+    setLinkingIOC(true);
+    try {
+      await linkIOCToIncident({ incidentId: id, iocId: selectedIOCId, incidentTitle: incident?.title });
+      const updated = await getIncidentIOCs(id);
+      setIncidentIOCs(updated);
+      setSelectedIOCId("");
+      setShowIOCLink(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to link IOC");
+    } finally {
+      setLinkingIOC(false);
+    }
+  }
+
+  async function handleUnlinkIOC(iocId: string) {
+    try {
+      await unlinkIOCFromIncident({ incidentId: id, iocId });
+      const updated = await getIncidentIOCs(id);
+      setIncidentIOCs(updated);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to unlink IOC");
+    }
+  }
+
+  // Tag handlers
+  async function handleAddTag() {
+    if (!newTagName.trim()) return;
+    setAddingTag(true);
+    try {
+      const tag = await getOrCreateTag(newTagName.trim());
+      await addTagToIncident({ incidentId: id, tagId: tag.id });
+      const updated = await getIncidentTags(id);
+      setIncidentTags(updated);
+      setNewTagName("");
+      setShowTagAdd(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to add tag");
+    } finally {
+      setAddingTag(false);
+    }
+  }
+
+  async function handleRemoveTag(tagId: string) {
+    try {
+      await removeTagFromIncident({ incidentId: id, tagId });
+      const updated = await getIncidentTags(id);
+      setIncidentTags(updated);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to remove tag");
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -556,6 +674,238 @@ export default function IncidentDetailPage() {
                 <span>0h</span>
                 <span>Median: {mttr.medianHours}h</span>
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* Tags Section */}
+        <div className="rounded-2xl bg-white shadow-sm p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold text-foreground">Tags</h2>
+            {myRole && myRole !== "viewer" && (
+              <button
+                onClick={() => setShowTagAdd(!showTagAdd)}
+                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
+              >
+                {showTagAdd ? "Cancel" : "+ Add Tag"}
+              </button>
+            )}
+          </div>
+
+          {showTagAdd && (
+            <div className="mb-4 rounded-xl border border-border bg-background p-4">
+              <input
+                type="text"
+                value={newTagName}
+                onChange={(e) => setNewTagName(e.target.value)}
+                placeholder="Tag name (e.g. phishing, false-positive)"
+                className="block w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-foreground placeholder-muted focus:border-accent focus:outline-none mb-3"
+              />
+              <button
+                onClick={handleAddTag}
+                disabled={addingTag || !newTagName.trim()}
+                className="rounded-lg bg-foreground px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+              >
+                {addingTag ? "Adding..." : "Add Tag"}
+              </button>
+            </div>
+          )}
+
+          {incidentTags.length === 0 ? (
+            <p className="text-sm text-muted">No tags yet</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {incidentTags.map((tag) => (
+                <div
+                  key={tag.id}
+                  className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium"
+                  style={{ backgroundColor: tag.color + "20", color: tag.color }}
+                >
+                  <span>{tag.name}</span>
+                  {myRole && myRole !== "viewer" && (
+                    <button
+                      onClick={() => handleRemoveTag(tag.id)}
+                      className="hover:opacity-70 transition"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Playbooks Section */}
+        {incidentPlaybooks.length > 0 && (
+          <div className="space-y-4">
+            {incidentPlaybooks.map((ip) => (
+              <div key={ip.id} className="rounded-2xl bg-white shadow-sm p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-base font-semibold text-foreground">{ip.playbook.name}</h2>
+                    <p className="text-sm text-muted mt-1">
+                      Progress: {ip.progress_pct}% ({ip.completions.length}/{ip.tasks.length} tasks)
+                    </p>
+                  </div>
+                  {ip.completed_at && (
+                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-600">
+                      ✓ Completed
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  {ip.tasks.map((task) => {
+                    const isCompleted = ip.completions.some(c => c.task_id === task.id);
+                    return (
+                      <div
+                        key={task.id}
+                        className={`flex items-start gap-3 rounded-lg border p-3 transition ${
+                          isCompleted ? "border-emerald-200 bg-emerald-50/50" : "border-border bg-background"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isCompleted}
+                          onChange={() => handleToggleTask(ip.id, task.id, isCompleted)}
+                          disabled={myRole === "viewer"}
+                          className="mt-0.5 h-4 w-4 rounded border-border text-accent focus:ring-accent"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-medium ${isCompleted ? "text-emerald-700 line-through" : "text-foreground"}`}>
+                            {task.title}
+                            {task.required && <span className="ml-1 text-red-500">*</span>}
+                          </p>
+                          {task.description && (
+                            <p className="text-xs text-muted mt-1">{task.description}</p>
+                          )}
+                        </div>
+                        {task.estimated_minutes && (
+                          <span className="shrink-0 text-xs text-muted">~{task.estimated_minutes}m</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Assign Playbook */}
+        {myRole && myRole !== "viewer" && availablePlaybooks.length > 0 && (
+          <div className="rounded-2xl bg-white shadow-sm p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold text-foreground">Assign Playbook</h2>
+              <button
+                onClick={() => setShowPlaybookAssign(!showPlaybookAssign)}
+                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
+              >
+                {showPlaybookAssign ? "Cancel" : "+ Assign"}
+              </button>
+            </div>
+
+            {showPlaybookAssign && (
+              <div className="space-y-3">
+                <select
+                  value={selectedPlaybookId}
+                  onChange={(e) => setSelectedPlaybookId(e.target.value)}
+                  className="block w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none"
+                >
+                  <option value="">Select a playbook...</option>
+                  {availablePlaybooks.map((pb) => (
+                    <option key={pb.id} value={pb.id}>{pb.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleAssignPlaybook}
+                  disabled={assigningPlaybook || !selectedPlaybookId}
+                  className="rounded-xl bg-foreground px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                >
+                  {assigningPlaybook ? "Assigning..." : "Assign Playbook"}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* IOCs Section */}
+        <div className="rounded-2xl bg-white shadow-sm p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold text-foreground">Indicators of Compromise</h2>
+            {myRole && myRole !== "viewer" && (
+              <button
+                onClick={() => setShowIOCLink(!showIOCLink)}
+                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
+              >
+                {showIOCLink ? "Cancel" : "+ Link IOC"}
+              </button>
+            )}
+          </div>
+
+          {showIOCLink && (
+            <div className="mb-4 rounded-xl border border-border bg-background p-4">
+              <select
+                value={selectedIOCId}
+                onChange={(e) => setSelectedIOCId(e.target.value)}
+                className="block w-full rounded-xl border border-border bg-white px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none mb-3"
+              >
+                <option value="">Select an IOC...</option>
+                {availableIOCs.map((ioc) => (
+                  <option key={ioc.id} value={ioc.id}>
+                    {ioc.type}: {ioc.value}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={handleLinkIOC}
+                disabled={linkingIOC || !selectedIOCId}
+                className="rounded-lg bg-foreground px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+              >
+                {linkingIOC ? "Linking..." : "Link IOC"}
+              </button>
+            </div>
+          )}
+
+          {incidentIOCs.length === 0 ? (
+            <p className="text-sm text-muted">No IOCs linked yet</p>
+          ) : (
+            <div className="space-y-3">
+              {incidentIOCs.map((ioc) => (
+                <div key={ioc.id} className="flex items-start justify-between gap-4 rounded-lg border border-border bg-background p-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                        ioc.type === "ip" ? "bg-blue-50 text-blue-600" :
+                        ioc.type === "domain" ? "bg-purple-50 text-purple-600" :
+                        ioc.type === "hash" ? "bg-orange-50 text-orange-600" :
+                        ioc.type === "url" ? "bg-cyan-50 text-cyan-600" :
+                        "bg-pink-50 text-pink-600"
+                      }`}>
+                        {ioc.type}
+                      </span>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                        ioc.threat_score === "malicious" ? "bg-red-50 text-red-600" :
+                        ioc.threat_score === "suspicious" ? "bg-amber-50 text-amber-600" :
+                        ioc.threat_score === "benign" ? "bg-emerald-50 text-emerald-600" :
+                        "bg-zinc-100 text-zinc-500"
+                      }`}>
+                        {ioc.threat_score}
+                      </span>
+                    </div>
+                    <p className="text-sm font-mono font-medium text-foreground break-all">{ioc.value}</p>
+                  </div>
+                  {myRole && myRole !== "viewer" && (
+                    <button
+                      onClick={() => handleUnlinkIOC(ioc.id)}
+                      className="shrink-0 text-xs text-red-500 hover:text-red-400 transition"
+                    >
+                      Unlink
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>
