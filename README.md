@@ -144,34 +144,6 @@ Open [http://localhost:3000](http://localhost:3000).
 | 5 | Dashboard + filters + search | Done |
 | 6 | Member management + invite flow + profiles | Done |
 
-## Roadmap
-
-The following features would take NettSOC from a functional MVP to a professional-grade SOC platform:
-
-### High Priority
-- [ ] **Audit log** — Track all actions (who changed what, when) for compliance
-- [ ] **Email notifications** — Alert on new incidents, status changes, mentions
-- [ ] **Incident assignment** — Assign incidents to specific analysts (owner field)
-- [ ] **Comments/discussion** — Threaded comments on incidents (separate from timeline)
-- [ ] **Markdown support** — Rich text in summaries, timeline, and comments
-
-### Medium Priority
-- [ ] **PDF/CSV export** — Export incident reports for stakeholders
-- [ ] **RBAC on UI** — Hide create/edit/delete buttons for viewers in the UI layer
-- [ ] **Realtime updates** — Supabase Realtime for live incident/timeline updates
-- [ ] **Incident templates** — Pre-built templates for common incident types (phishing, malware, etc.)
-- [ ] **Tags/labels** — Categorize incidents with custom tags
-- [ ] **Bulk actions** — Close/assign multiple incidents at once
-
-### Lower Priority
-- [ ] **SIEM integration** — Ingest alerts from Splunk, Sentinel, etc.
-- [ ] **Webhook/API** — External integrations and automation
-- [ ] **SSO/SAML** — Enterprise single sign-on
-- [ ] **Dark/light theme toggle**
-- [ ] **Mobile-responsive PWA**
-- [ ] **Metrics & reporting** — MTTD, MTTR, incident trends over time
-- [ ] **Playbooks** — Step-by-step response procedures linked to incident types
-- [ ] **File preview** — Inline preview for images/PDFs in evidence
 
 ## License
 
